@@ -43,7 +43,7 @@
     "test:android:instrumented:assemble": "./example/android/gradlew --project-dir example/android :wekor_react-native-bottom-sheet:assembleDebugAndroidTest",
     "test:android:instrumented": "./example/android/gradlew --project-dir example/android :wekor_react-native-bottom-sheet:connectedDebugAndroidTest",
     "test:android:unit": "./example/android/gradlew --project-dir example/android :wekor_react-native-bottom-sheet:testDebugUnitTest",
-    "typecheck": "tsc",
+    "typecheck": "tsc && tsc -p example",
     "lint": "eslint \"**/*.{js,ts,tsx}\""
   },
   "keywords": [

@@ -54,7 +54,6 @@ export const NativeOverlayKeyboardInputScreen = () => {
         onChangeText={setValue}
         placeholder="Try typing here"
         style={styles.input}
-        textAlignVertical="top"
       />
 
       <Button title="Open mounted overlay" onPress={() => setIndex(1)} />
@@ -82,6 +81,7 @@ const styles = StyleSheet.create({
     padding: 14,
     fontSize: 16,
     lineHeight: 22,
+    textAlignVertical: 'top',
     backgroundColor: '#f8fafc',
   },
   statePanel: {
