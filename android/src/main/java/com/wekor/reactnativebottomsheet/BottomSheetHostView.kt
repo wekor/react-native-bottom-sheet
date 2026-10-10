@@ -1,9 +1,8 @@
 package com.wekor.reactnativebottomsheet
 
 import android.content.Context
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
+import android.graphics.drawable.ColorDrawable
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
@@ -133,7 +132,10 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
   // MARK: - Internal
 
   private val sheetContainer = FrameLayout(context)
-  private val scrimPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+  // The scrim is this view's background while visible, drawn below the sheet like any background.
+  // A background also marks the view as opaque to gesture systems that hit-test the view tree
+  // (react-native-gesture-handler), so they stop here instead of reaching views behind the sheet.
+  private val scrimDrawable = ColorDrawable(Color.TRANSPARENT)
   private var activeAnimation: SpringAnimation? = null
   private var activeAnimationEmitsSettle = false
   private var velocityTracker: VelocityTracker? = null
@@ -371,11 +373,6 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
     notifyCloseRequestStateChanged()
   }
 
-  override fun dispatchDraw(canvas: Canvas) {
-    drawScrim(canvas)
-    super.dispatchDraw(canvas)
-  }
-
   private fun layoutSheetChildren(containerWidth: Int, containerHeight: Int) {
     for (i in 0 until sheetContainer.childCount) {
       val child = sheetContainer.getChildAt(i)
@@ -453,7 +450,7 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
 
   fun setScrimColor(color: Int?) {
     scrimColor = color ?: Color.TRANSPARENT
-    invalidate()
+    renderScrim()
   }
 
   fun setScrimOpacities(values: List<Float>) {
@@ -494,7 +491,7 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
       previousHeight?.let {
         if (height < it) {
           throw IllegalArgumentException(
-            "Invalid bottom sheet detent at index $index: resolved height ${height / density} is lower than previous detent height ${it / density}. Detents must be passed in ascending order."
+            "Invalid bottom sheet detent at index $index: resolved height ${height / density} is lower than previous detent height ${it / density}. Detents must be passed in ascending order.",
           )
         }
       }
@@ -1093,7 +1090,7 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
 
   private fun negotiationLevel(expanding: Boolean): ScrollableNegotiationLevel =
     ScrollableNegotiationLevel.from(
-      if (expanding) scrollableExpandNegotiation else scrollableCollapseNegotiation
+      if (expanding) scrollableExpandNegotiation else scrollableCollapseNegotiation,
     )
 
   private val hasAnyHandoffNegotiation: Boolean
@@ -1699,6 +1696,7 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
     scrimPressed = false
     scrimTouchActive = false
     scrimProgress = 0f
+    renderScrim()
     suppressScrimForClosingTarget = false
     sheetContainer.removeAllViews()
     stateWrapper = null
@@ -1710,7 +1708,7 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
   private fun updateScrim(position: Float = currentSheetHeight()) {
     if (!modal) {
       scrimProgress = 0f
-      invalidate()
+      renderScrim()
       return
     }
 
@@ -1730,12 +1728,12 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
     // re-anchor settles.
     if (scrimPinnedFull) {
       scrimProgress = fullyOpenScrimOpacity()
-      invalidate()
+      renderScrim()
       return
     }
 
     scrimProgress = scrimOpacityAt(position)
-    invalidate()
+    renderScrim()
   }
 
   /** The opacity at the tallest detent, held while the sheet re-anchors. */
@@ -1782,7 +1780,7 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
 
   private fun hideScrim() {
     scrimProgress = 0f
-    invalidate()
+    renderScrim()
   }
 
   internal val isInteractive: Boolean
@@ -1807,15 +1805,15 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
 
   private fun isScrimVisible(): Boolean = modal && scrimProgress > 0.001f
 
-  private fun drawScrim(canvas: Canvas) {
-    if (!modal || scrimProgress <= 0.001f) {
+  private fun renderScrim() {
+    if (!isScrimVisible()) {
+      if (background != null) background = null
       return
     }
-
     val alpha = (Color.alpha(scrimColor) * scrimProgress).toInt().coerceIn(0, 255)
-    scrimPaint.color =
+    scrimDrawable.color =
       Color.argb(alpha, Color.red(scrimColor), Color.green(scrimColor), Color.blue(scrimColor))
-    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), scrimPaint)
+    if (background !== scrimDrawable) background = scrimDrawable
   }
 
   companion object {
