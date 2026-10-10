@@ -143,8 +143,6 @@ export interface BottomSheetProps {
    * @default { expand: 'handoff', collapse: 'initial' }
    */
   scrollableNegotiation?: ScrollableNegotiation;
-  /** @deprecated Use `scrollableNegotiation="none"` instead. */
-  disableScrollableNegotiation?: boolean;
 }
 
 type ModalOnlyBottomSheetProps = {
@@ -198,15 +196,11 @@ export const BottomSheet = (props: BottomSheetProps) => {
     modal = false,
     nativeOverlay = false,
     scrollableNegotiation,
-    disableScrollableNegotiation,
     scrimColor,
     scrimOpacities,
   } = props as BottomSheetInternalProps;
   const resolvedScrollableNegotiation =
-    scrollableNegotiation ??
-    (disableScrollableNegotiation
-      ? ('none' as const)
-      : DEFAULT_SCROLLABLE_NEGOTIATION);
+    scrollableNegotiation ?? DEFAULT_SCROLLABLE_NEGOTIATION;
   const resolvedExpandNegotiation =
     typeof resolvedScrollableNegotiation === 'string'
       ? resolvedScrollableNegotiation
