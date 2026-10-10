@@ -158,6 +158,8 @@ type ModalOnlyBottomSheetProps = {
   nativeOverlay?: boolean;
   /** Scrim color used by `ModalBottomSheet`. */
   scrimColor?: string;
+  /** Mount behavior used by `ModalBottomSheet`. */
+  mount?: 'open' | 'once' | 'always';
   /**
    * Scrim opacities per detent, indexed to match `detents`. Each value in 0-1
    * scales the scrim color's alpha at the detent of the same index, and the
@@ -198,6 +200,7 @@ export const BottomSheet = (props: BottomSheetProps) => {
     scrollableNegotiation,
     scrimColor,
     scrimOpacities,
+    mount = 'open',
   } = props as BottomSheetInternalProps;
   const resolvedScrollableNegotiation =
     scrollableNegotiation ?? DEFAULT_SCROLLABLE_NEGOTIATION;
@@ -227,6 +230,13 @@ export const BottomSheet = (props: BottomSheetProps) => {
   const selectedNormalizedDetent = normalizedDetents[index]!;
   const isSheetClosed = isNormalizedDetentClosed(selectedNormalizedDetent);
   const hasCloseRequestHandler = onCloseRequest != null;
+  // Whether a modal sheet is mounted. It turns on in the same render that
+  // `index` opens the sheet, so `'content'` detents measure the children before
+  // it animates in, and (in `'open'` mode) off once it settles closed.
+  const [shown, setShown] = useState(!isSheetClosed);
+  if (!isSheetClosed && !shown) {
+    setShown(true);
+  }
   // Default the scrim opacity per detent: transparent at any closed detent,
   // fully opaque at every open one.
   const resolvedScrimOpacities =
@@ -238,6 +248,13 @@ export const BottomSheet = (props: BottomSheetProps) => {
     onIndexChange?.(event.nativeEvent.index);
   };
   const handleSettle = (event: { nativeEvent: { index: number } }) => {
+    if (
+      mount === 'open' &&
+      isSheetClosed &&
+      event.nativeEvent.index === index
+    ) {
+      setShown(false);
+    }
     onSettle?.(event.nativeEvent.index);
   };
 
@@ -255,6 +272,10 @@ export const BottomSheet = (props: BottomSheetProps) => {
         NativeProps & { children?: ReactNode }
       >
   );
+
+  if (modal && mount !== 'always' && !shown) {
+    return null;
+  }
 
   const sheet = (
     <View

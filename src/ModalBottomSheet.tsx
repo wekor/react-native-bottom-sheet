@@ -51,6 +51,18 @@ export interface ModalBottomSheetProps extends BottomSheetProps {
    * `[0, 0.5, 1]`, to keep the scrim deepening across every detent.
    */
   scrimOpacities?: number[];
+  /**
+   * When the sheet and its children are mounted:
+   *
+   * - `'open'`: only while open. The sheet mounts when `index` moves to an open
+   *   detent and unmounts once it settles closed, so its children (and their
+   *   effects) run only while it is presented.
+   * - `'once'`: from the first opening on, keeping the children's state.
+   * - `'always'`: from the start, even before the first opening.
+   *
+   * @default 'open'
+   */
+  mount?: 'open' | 'once' | 'always';
 }
 
 /** Bottom sheet presented above the current UI with a scrim. */

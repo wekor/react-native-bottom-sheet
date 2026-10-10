@@ -26,6 +26,31 @@ const insets = useSafeAreaInsets();
 </ModalBottomSheet>
 ```
 
+## Mounting
+
+A closed modal sheet renders nothing by default, so its children and their
+effects run only while it is presented. The sheet mounts in the same render that
+`index` moves to an open detent, so `'content'` detents measure the children
+before it animates in, and it unmounts once it settles at a closed detent, after
+the closing animation.
+
+Use `mount` to keep the children mounted, for example to preserve a form's input
+or a list's scroll position across openings:
+
+| `mount`            | Children are mounted                       |
+| ------------------ | ------------------------------------------ |
+| `'open'` (default) | only while the sheet is open               |
+| `'once'`           | from the first opening on                  |
+| `'always'`         | from the start, even before it first opens |
+
+```tsx
+<ModalBottomSheet index={index} onIndexChange={setIndex} mount="once">
+  <Form />
+</ModalBottomSheet>
+```
+
+An inline `BottomSheet` always keeps its children mounted.
+
 ## Scrim
 
 Tapping the scrim collapses the sheet to the closed detent. Use `scrimColor` to

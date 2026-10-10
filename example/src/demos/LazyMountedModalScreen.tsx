@@ -1,6 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, StyleSheet, Text, View } from 'react-native';
-import { ModalBottomSheet } from '@wekor/react-native-bottom-sheet';
+import {
+  ModalBottomSheet,
+  type ModalBottomSheetProps,
+} from '@wekor/react-native-bottom-sheet';
 
 import {
   DemoScreen,
@@ -11,90 +14,82 @@ import {
   useSheetBottomPadding,
 } from '../demoShared';
 
-type SheetState = {
-  mounted: boolean;
-  index: number;
-  openCount: number;
-};
+type Mount = NonNullable<ModalBottomSheetProps['mount']>;
+
+const MOUNTS: Mount[] = ['open', 'once', 'always'];
 
 export const LazyMountedModalScreen = () => {
-  const [sheet, setSheet] = useState<SheetState>({
-    mounted: false,
-    index: 0,
-    openCount: 0,
-  });
+  const [index, setIndex] = useState(0);
+  const [mount, setMount] = useState<Mount>('open');
+  const [mounted, setMounted] = useState(false);
+  const [mountCount, setMountCount] = useState(0);
 
-  const openSheet = () => {
-    setSheet((previous) => ({
-      mounted: true,
-      index: 1,
-      openCount: previous.openCount + 1,
-    }));
-  };
-
-  const closeSheet = () => {
-    setSheet((previous) =>
-      previous.mounted ? { ...previous, index: 0 } : previous
-    );
+  const handleContentMount = () => {
+    setMounted(true);
+    setMountCount((previous) => previous + 1);
   };
 
   return (
     <DemoScreen
       title="Lazy mounted modal"
       sheet={
-        sheet.mounted ? (
-          <LazyMountedSheet
-            index={sheet.index}
-            openCount={sheet.openCount}
-            onClose={closeSheet}
-            onIndexChange={(nextIndex) => {
-              setSheet((previous) => ({ ...previous, index: nextIndex }));
-            }}
-            onSettle={(nextIndex) => {
-              if (nextIndex === 0) {
-                setSheet((previous) => ({
-                  ...previous,
-                  mounted: false,
-                  index: 0,
-                }));
-              }
-            }}
+        <ModalBottomSheet
+          // Remount when the mode changes so each mode starts fresh.
+          key={mount}
+          index={index}
+          mount={mount}
+          onIndexChange={setIndex}
+          scrimColor={MODAL_SCRIM_COLOR}
+          surface={<SheetBackground style={StyleSheet.absoluteFill} />}
+        >
+          <LazyContent
+            mountCount={mountCount}
+            onClose={() => setIndex(0)}
+            onMount={handleContentMount}
+            onUnmount={() => setMounted(false)}
           />
-        ) : null
+        </ModalBottomSheet>
       }
     >
-      <Button title="Open sheet" onPress={openSheet} />
-      <Text>mounted: {sheet.mounted ? 'yes' : 'no'}</Text>
-      <Text>index: {sheet.index}</Text>
-      <Text>opens: {sheet.openCount}</Text>
+      <Button title="Open sheet" onPress={() => setIndex(1)} />
+      <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
+        {MOUNTS.map((value) => (
+          <Button
+            key={value}
+            title={value === mount ? `[${value}]` : value}
+            onPress={() => setMount(value)}
+          />
+        ))}
+      </View>
+      <Text>mount: {mount}</Text>
+      <Text>content mounted: {mounted ? 'yes' : 'no'}</Text>
+      <Text>content mounts: {mountCount}</Text>
     </DemoScreen>
   );
 };
 
-const LazyMountedSheet = ({
-  index,
-  openCount,
+const LazyContent = ({
+  mountCount,
   onClose,
-  onIndexChange,
-  onSettle,
+  onMount,
+  onUnmount,
 }: {
-  index: number;
-  openCount: number;
+  mountCount: number;
   onClose: () => void;
-  onIndexChange: (index: number) => void;
-  onSettle: (index: number) => void;
+  onMount: () => void;
+  onUnmount: () => void;
 }) => {
-  const firstRenderIndex = useRef(index);
   const sheetBottomPadding = useSheetBottomPadding(0);
 
+  useEffect(() => {
+    onMount();
+    return onUnmount;
+    // Report only the mount and unmount of this content.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
-    <ModalBottomSheet
-      index={index}
-      onIndexChange={onIndexChange}
-      onSettle={onSettle}
-      scrimColor={MODAL_SCRIM_COLOR}
-      surface={<SheetBackground style={StyleSheet.absoluteFill} />}
-    >
+    <>
       <SheetHeader title="Lazy mounted modal" onClose={onClose} />
       <View
         style={{
@@ -105,11 +100,9 @@ const LazyMountedSheet = ({
           gap: 8,
         }}
       >
-        <Text>first render index: {firstRenderIndex.current}</Text>
-        <Text>current index: {index}</Text>
-        <Text>open count: {openCount}</Text>
+        <Text>content mounts: {mountCount}</Text>
         <Button title="Close from sheet" onPress={onClose} />
       </View>
-    </ModalBottomSheet>
+    </>
   );
 };
