@@ -70,6 +70,10 @@ export default function RootLayout() {
               options={{ title: 'Modal with FlatList', headerShown: false }}
             />
             <Stack.Screen
+              name="fixed-height-list"
+              options={{ title: 'Fixed-height list', headerShown: false }}
+            />
+            <Stack.Screen
               name="keyboard-content-detent"
               options={{
                 title: 'Keyboard content detent',

@@ -549,6 +549,7 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
         firstNonZeroDetentHeight > 0f &&
         currentSheetHeight() + 0.5f >= firstNonZeroDetentHeight
     detentSpecs = resolvedDetents
+    pushNativeGeometry()
     if (width > 0 && height > 0 && detentSpecs.isNotEmpty()) {
       layoutSheetContainer(width, height)
 
@@ -895,11 +896,28 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
 
     val capChanged = cap != nativeCapPx
     nativeCapPx = cap
-    pushGeometryState(width, height, height - cap)
-    if (capChanged) {
-      refreshDetentsFromLayout()
-      requestLayout()
-    }
+    // Re-resolve before pushing: percentage detents, and so the content region, follow the cap.
+    if (capChanged) refreshDetentsFromLayout()
+    pushNativeGeometry()
+    if (capChanged) requestLayout()
+  }
+
+  /** Pushes this view's size and the inset of the content region (see [contentRegionHeight]). */
+  private fun pushNativeGeometry() {
+    if (width <= 0 || height <= 0) return
+    pushGeometryState(width, height, height - contentRegionHeight())
+  }
+
+  /**
+   * The tallest height the sheet can show, which bounds the in-flow content. A `content` detent is
+   * measured against the full cap; otherwise the tallest detent bounds the content, so a filling
+   * scrollable ends on screen instead of below it.
+   */
+  private fun contentRegionHeight(): Float {
+    val cap = resolvedMaxDetentHeight()
+    if (rawDetentSpecs.any { it.kind == DetentKind.CONTENT }) return cap
+    val tallest = detentSpecs.lastOrNull()?.height ?: return cap
+    return if (tallest > 0f) tallest.coerceAtMost(cap) else cap
   }
 
   private fun pushGeometryState(widthPx: Int, heightPx: Int, insetTopPx: Float) {

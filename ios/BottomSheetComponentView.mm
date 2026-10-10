@@ -80,7 +80,12 @@ using namespace facebook::react;
     _sheetView = [[BottomSheetContentView alloc] initWithFrame:CGRectZero];
     _sheetView.delegate = self;
     _sheetView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.contentView = _sheetView;
+    // Deliberately not the `contentView`: the base class sizes that to the node's
+    // padding-inset content frame, but the sheet node's Yoga padding is the
+    // content-region inset for the in-flow content only. Even a transient resize
+    // by it re-resolves the detent cap from the shrunken bounds (the safe area
+    // changes synchronously) and restarts a running snap from the wrong position.
+    [self addSubview:_sheetView];
   }
   return self;
 }
@@ -175,12 +180,8 @@ using namespace facebook::react;
            oldLayoutMetrics:(const LayoutMetrics &)oldLayoutMetrics
 {
   [super updateLayoutMetrics:layoutMetrics oldLayoutMetrics:oldLayoutMetrics];
-  // The sheet node's Yoga padding carries the content-region inset for the
-  // in-flow content; the base class would shrink the contentView to the
-  // padding-inset content frame, feeding the inset back into the natively
-  // measured geometry (host height → cap → inset) in a loop. The native sheet
-  // host must keep filling the node — padding is for Yoga children only.
-  if (_sheetView.superview == self) {
+  // The native sheet fills the node; the overlay container sizes it otherwise.
+  if (_overlayContainer == nil) {
     _sheetView.frame = self.bounds;
   }
 }
@@ -214,7 +215,7 @@ using namespace facebook::react;
 
 /// Reconciles where the sheet view is parented with the current `nativeOverlay`
 /// flag and window availability: hoisted into a full-window container attached to
-/// the host window when on, restored as our own `contentView` when off.
+/// the host window when on, restored under this view when off.
 - (void)updateOverlayPresentation
 {
   UIWindow *window = self.window;
@@ -240,9 +241,6 @@ using namespace facebook::react;
     }
 
     if (_sheetView.superview != _overlayContainer) {
-      if (self.contentView == _sheetView) {
-        self.contentView = nil;
-      }
       _overlayContainer.frame = window.bounds;
       [_overlayContainer addSubview:_sheetView];
       _sheetView.frame = _overlayContainer.bounds;
@@ -341,9 +339,9 @@ using namespace facebook::react;
     [self detachOverlayTouchHandler];
     [_overlayContainer removeFromSuperview];
   }
-  self.contentView = nil;
-  self.contentView = _sheetView;
   _overlayContainer = nil;
+  [self addSubview:_sheetView];
+  _sheetView.frame = self.bounds;
 }
 
 - (void)mountChildComponentView:(UIView<RCTComponentViewProtocol> *)childComponentView index:(NSInteger)index

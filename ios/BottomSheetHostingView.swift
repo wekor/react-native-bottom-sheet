@@ -1280,10 +1280,24 @@ public final class BottomSheetHostingView: UIView {
   }
 
   /// The natively measured inset of the content region: the gap between the
-  /// sheet's height and the detent cap. Reported into the shadow tree, where
-  /// it becomes Yoga bottom padding on the sheet node.
+  /// sheet's height and the content region's. Reported into the shadow tree,
+  /// where it becomes Yoga bottom padding on the sheet node.
   public var contentRegionInset: CGFloat {
-    max(0, bounds.height - resolvedMaxDetentHeight)
+    max(0, bounds.height - contentRegionHeight)
+  }
+
+  /// The tallest height the sheet can show, which bounds the in-flow content.
+  /// A `content` detent is measured against the full cap; otherwise the tallest
+  /// detent bounds the content, so a filling scrollable ends on screen instead of
+  /// below it.
+  private var contentRegionHeight: CGFloat {
+    let cap = resolvedMaxDetentHeight
+    guard
+      !rawDetentSpecs.contains(where: { $0.kind == .content }),
+      let tallest = detentSpecs.last?.height,
+      tallest > 0
+    else { return cap }
+    return min(tallest, cap)
   }
 
   /// Stable coordinate base for the sheet container. The container is sized to

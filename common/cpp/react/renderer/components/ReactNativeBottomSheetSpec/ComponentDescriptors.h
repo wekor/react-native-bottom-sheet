@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ShadowNodes.h"
-#include <algorithm>
 #include <react/renderer/components/view/YogaLayoutableShadowNode.h>
 #include <react/renderer/core/ConcreteComponentDescriptor.h>
 
@@ -37,15 +36,15 @@ class BottomSheetViewComponentDescriptor final
     auto& layoutableShadowNode =
         static_cast<YogaLayoutableShadowNode&>(shadowNode);
 
-    // The content-region inset, applied as Yoga BOTTOM padding in every mode.
-    // In-flow content (the flex: 1 wrapper) then resolves to the content region
-    // (see contentRegionPadding); absolutely positioned children (the surface)
+    // The natively measured inset of the content region — the gap between the
+    // sheet's height and the detent cap — applied as Yoga BOTTOM padding in
+    // every mode. In-flow content (the flex: 1 wrapper) then resolves to
+    // exactly the detent cap; absolutely positioned children (the surface)
     // ignore padding and keep filling the node. Bottom rather than top keeps
     // the content's Yoga origin at zero, matching its native placement at the
     // top of the (already offset) sheet container on both platforms — the
     // container's top offset is carried by the contentOffsetY state instead.
-    layoutableShadowNode.setPadding(
-        {0, 0, 0, contentRegionPadding(props, stateData)});
+    layoutableShadowNode.setPadding({0, 0, 0, stateData.contentRegionInset});
 
     // In native-overlay mode the sheet's real container is the full-screen
     // overlay window, not the in-tree slot. Both platforms report the sheet's
@@ -63,39 +62,6 @@ class BottomSheetViewComponentDescriptor final
     }
 
     ConcreteComponentDescriptor::adopt(shadowNode);
-  }
-
- private:
-  // Sizes the content region to the tallest height the sheet can reach. The
-  // native state reports the gap between the sheet's height and the detent cap.
-  // Without a `content` detent, the tallest detent can sit below the cap, and
-  // content laid out against the full cap would extend below the screen, where
-  // a filling scrollable's last items can never scroll into view. A `content`
-  // detent keeps the cap, since the content is measured against it. Depends only
-  // on props and native geometry, never on the sheet's position, so it stays
-  // constant while the sheet moves.
-  static Float contentRegionPadding(
-      const BottomSheetViewProps& props,
-      const BottomSheetViewState& state) {
-    const Float hostHeight = state.frameSize.height;
-    const Float capInset = state.contentRegionInset;
-    if (hostHeight <= 0) {
-      return capInset;
-    }
-    const Float cap = hostHeight - capInset;
-    Float tallest = 0;
-    for (const auto& detent : props.detents) {
-      if (detent.kind == "content") {
-        return capInset;
-      }
-      const auto value = static_cast<Float>(detent.value);
-      tallest =
-          std::max(tallest, detent.kind == "percentage" ? cap * value : value);
-    }
-    if (tallest <= 0) {
-      return capInset;
-    }
-    return hostHeight - std::min(tallest, cap);
   }
 };
 
