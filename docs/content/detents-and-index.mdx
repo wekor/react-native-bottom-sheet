@@ -1,0 +1,125 @@
+---
+title: Detents and index
+---
+
+# Detents and index
+
+Detents are the heights to which the sheet snaps. Each detent is a number (a
+fixed height in React Native density-independent layout units—points on iOS and
+dp on Android), a percentage string such as `'30%'`, or `'content'` (the
+measured content height, capped by the available sheet height). The default
+detents are `[0, 'content']`.
+
+For example, `[0, 'content']` creates a content-sized sheet, `[0, 300]` keeps
+the open height fixed, and `['0%', '30%', '80%']` creates responsive heights.
+
+Percentage values from `0%` through `100%`, including decimals such as `12.5%`,
+resolve against the available sheet height and update when that height changes.
+The percentage syntax is unsigned and does not allow whitespace, so values such
+as `'-10%'` are invalid.
+
+`detents` must contain at least one item. Numeric detents must be finite and
+non-negative; the library throws an `Error` for values such as `-10`, `NaN`, or
+`Infinity` instead of correcting them. A numeric detent may be taller than the
+measured content or exceed the available height; native layout caps its resolved
+height to the available geometry.
+
+Pass detents in ascending order, from shortest to tallest. Detent forms can be
+mixed, but they must remain ordered by their resolved heights at every layout
+size your app supports. The library validates the resolved order during native
+layout.
+
+Sheet children are laid out in a flex container. For a full-height sheet, apply
+`flex: 1` to your content and use the `'content'` detent. `surface` is sized by
+the library, so `flex: 1` only ever belongs on your content, never on the
+surface:
+
+```tsx
+<BottomSheet
+  // `detents` defaults to `[0, 'content']`.
+  index={index}
+  onIndexChange={setIndex}
+  surface={
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: 'white' }]} />
+  }
+>
+  <View style={{ flex: 1 }}>{/* Full-height sheet content. */}</View>
+</BottomSheet>
+```
+
+By default, full-height detents are capped below the status bar. Set
+`extendUnderStatusBar` when the sheet should be allowed to occupy the full
+screen height:
+
+```tsx
+<BottomSheet // Or `ModalBottomSheet`.
+  extendUnderStatusBar
+  index={index}
+  onIndexChange={setIndex}
+  surface={/* ... */}
+>
+  <View style={{ flex: 1 }}>{/* Full-screen sheet content. */}</View>
+</BottomSheet>
+```
+
+## Index events
+
+The `index` prop must be a finite, zero-based integer in the range
+`0..(detents.length - 1)`. Invalid indices and empty `detents` arrays throw an
+`Error` synchronously in JavaScript for both `BottomSheet` and
+`ModalBottomSheet`. `onIndexChange` and `onSettle` have different
+responsibilities:
+
+- `onIndexChange` fires when a user-triggered snap is _initiated_: the
+  moment a drag commits to a detent, before the animation settles. It does not
+  fire for programmatic `index` changes; you already know when you make those.
+  Treat it as the signal to update your controlled `index` state.
+- `onSettle` fires when the sheet finishes snapping to a detent, regardless of
+  whether that snap was user-triggered or programmatic. It is the
+  signal for the _end_ of any movement. Use it for observability or side effects
+  (analytics, reacting to collapse, etc.), not for updating the controlled
+  `index` state.
+
+```tsx
+const [index, setIndex] = useState(0);
+```
+
+```tsx
+<BottomSheet // Or `ModalBottomSheet`.
+  detents={[0, 300, 600]} // Collapsed, 300 layout units, 600 layout units.
+  index={index}
+  onIndexChange={setIndex} // Fires when a drag commits; keep state in sync.
+  surface={/* ... */}
+  onSettle={(nextIndex) => {
+    if (nextIndex === 0) console.log('Sheet finished collapsing.');
+  }}
+>
+  {/* ... */}
+</BottomSheet>
+```
+
+Detents can also change over time. When you update `detents`, the sheet keeps
+the current index and animates to the updated detent height when needed. If an
+update shortens the array, set a matching in-range `index` in the same render;
+the library does not clamp a now-out-of-range index.
+
+## Programmatic-only detents
+
+If you want a detent to be reachable only via code (not by dragging), use the
+object form or the `programmatic` helper. Programmatic detents are excluded from
+drag snapping but can still be targeted via `index` updates. If the closed
+detent is programmatic-only, tapping the scrim does not dismiss the sheet.
+
+```tsx
+<BottomSheet
+  detents={[0, programmatic(300), 600]}
+  index={index}
+  onIndexChange={setIndex}
+  surface={/* ... */}
+  onSettle={(nextIndex) => {
+    console.log(`Settled at ${nextIndex}.`);
+  }}
+>
+  {/* ... */}
+</BottomSheet>
+```

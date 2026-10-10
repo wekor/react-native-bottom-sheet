@@ -1,0 +1,129 @@
+/* Color palette. */
+:root {
+  --palette-navy-light-100: #001a72;
+  --palette-navy-light-80: #33488e;
+  --palette-navy-light-60: #6676aa;
+  --palette-navy-light-40: #919fcf;
+  --palette-navy-light-20: #c1c6e5;
+  --palette-navy-light-10: #eef0ff;
+
+  --palette-navy-dark-140: #1b2445;
+  --palette-navy-dark-120: #122154;
+  --palette-navy-dark-100: #001a72;
+  --palette-navy-dark-80: #0a2688;
+  --palette-navy-dark-70: #33488e;
+  --palette-navy-dark-60: #7485bd;
+  --palette-navy-dark-40: #abbcf5;
+  --palette-navy-dark-20: #c1c6e5;
+
+  --palette-purple-light-100: #782aeb;
+  --palette-purple-light-80: #b58df1;
+  --palette-purple-light-60: #d1bbf3;
+  --palette-purple-light-40: #e8dafc;
+  --palette-purple-light-20: #f5eeff;
+  --palette-purple-light-transparent: #f5eeff40;
+  --palette-purple-light-transparent-80: #8b7f9d80;
+
+  --palette-purple-dark-140: #473d68;
+  --palette-purple-dark-120: #6a539a;
+  --palette-purple-dark-100: #b07eff;
+  --palette-purple-dark-80: #c49ffe;
+  --palette-purple-dark-60: #d0b2ff;
+  --palette-purple-dark-40: #e9dbff;
+  --palette-purple-dark-transparent: #473d6840;
+
+  --palette-blue-light-100: #38acdd;
+  --palette-blue-light-80: #5bb9e0;
+  --palette-blue-light-60: #87cce8;
+  --palette-blue-light-40: #b5e1f1;
+  --palette-blue-light-20: #e1f3fa;
+
+  --palette-blue-dark-140: #1b4865;
+  --palette-blue-dark-120: #126893;
+  --palette-blue-dark-100: #00a9f0;
+  --palette-blue-dark-80: #6fcef5;
+  --palette-blue-dark-60: #a8dbf0;
+  --palette-blue-dark-40: #d7f0fa;
+
+  --palette-green-light-100: #57b495;
+  --palette-green-light-80: #82cab2;
+  --palette-green-light-60: #b1dfd0;
+  --palette-green-light-40: #dff2ec;
+  --palette-green-light-20: #ebfcf7;
+
+  --palette-green-dark-140: #2a4f4a;
+  --palette-green-dark-120: #31775d;
+  --palette-green-dark-100: #3fc684;
+  --palette-green-dark-80: #7adead;
+  --palette-green-dark-60: #a0dfc0;
+  --palette-green-dark-40: #d3f5e4;
+
+  --palette-red-light-100: #ff6259;
+  --palette-red-light-80: #fa7f7c;
+  --palette-red-light-60: #ffa3a1;
+  --palette-red-light-40: #ffd2d7;
+  --palette-red-light-20: #ffedf0;
+
+  --palette-red-dark-140: #5a3b46;
+  --palette-red-dark-120: #914f55;
+  --palette-red-dark-100: #ff7774;
+  --palette-red-dark-80: #ff8b88;
+  --palette-red-dark-60: #ffb4b2;
+  --palette-red-dark-40: #ffdcdb;
+
+  --palette-yellow-light-100: #ffd61e;
+  --palette-yellow-light-80: #ffe04b;
+  --palette-yellow-light-60: #ffe780;
+  --palette-yellow-light-40: #fff1b2;
+  --palette-yellow-light-20: #fffae1;
+
+  --palette-yellow-dark-140: #5a553a;
+  --palette-yellow-dark-120: #91823d;
+  --palette-yellow-dark-100: #ffdd44;
+  --palette-yellow-dark-80: #ffe678;
+  --palette-yellow-dark-60: #fff1b2;
+  --palette-yellow-dark-40: #fff9db;
+
+  /* Black & White palette, mainly for background settings */
+  --palette-off-white: #f8f9ff;
+  --palette-white: #fcfcff;
+  --palette-white-transparent-light: #fcfcff40;
+  --palette-white-transparent-dark: #fcfcff80;
+
+  --palette-light-off-navy: #30354a;
+  --palette-off-navy: #272b3c;
+  --palette-navy: #232736;
+  --palette-navy-transparent: #23273613;
+
+  --ifm-color-primary: var(--palette-blue-light-100);
+  --ifm-color-primary-dark: var(--palette-blue-dark-120);
+  --ifm-color-primary-darker: var(--palette-blue-dark-140);
+  --ifm-color-primary-darkest: var(--palette-blue-dark-140);
+  --ifm-color-primary-light: var(--palette-blue-light-80);
+  --ifm-color-primary-lighter: var(--palette-blue-light-60);
+  --ifm-color-primary-lightest: var(--palette-blue-light-40);
+  --ifm-font-family-base: system-ui, -apple-system, sans-serif;
+  --ifm-heading-font-family: system-ui, -apple-system, sans-serif;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: var(--palette-blue-dark-80);
+  --ifm-color-primary-dark: var(--palette-blue-dark-100);
+  --ifm-color-primary-darker: var(--palette-blue-dark-120);
+  --ifm-color-primary-darkest: var(--palette-blue-dark-140);
+  --ifm-color-primary-light: var(--palette-blue-dark-60);
+  --ifm-color-primary-lighter: var(--palette-blue-dark-40);
+  --ifm-color-primary-lightest: var(--palette-blue-light-20);
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+.footer {
+  --ifm-footer-background-color: var(--ifm-background-color);
+  border-top: 1px solid var(--ifm-toc-border-color);
+}
+
+.markdown :where(p, li, dd, blockquote) {
+  text-wrap: pretty;
+}
