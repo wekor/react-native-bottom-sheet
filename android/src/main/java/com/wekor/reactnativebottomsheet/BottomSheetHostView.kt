@@ -1,8 +1,10 @@
 package com.wekor.reactnativebottomsheet
 
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
+import android.graphics.Matrix
+import android.graphics.Paint
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
@@ -20,10 +22,14 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
+import com.facebook.react.R
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.uimanager.PointerEvents
+import com.facebook.react.uimanager.ReactPointerEventsView
 import com.facebook.react.uimanager.RootView
 import com.facebook.react.uimanager.StateWrapper
+import com.facebook.react.views.scroll.ReactHorizontalScrollView
+import com.facebook.react.views.scroll.ReactScrollView
 import com.facebook.react.views.view.ReactViewGroup
 import com.wekor.reactnativebottomsheet.closerequest.CloseRequestPresentationTracker
 import kotlin.math.abs
@@ -83,6 +89,17 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
       if (value == null) {
         lastSentStateSnapshot = null
       } else {
+        // The wrapper carries the state Fabric just committed: the frame size
+        // and content-region inset the content is now laid out against.
+        value.stateData
+          ?.takeIf { it.hasKey("contentRegionInset") }
+          ?.let {
+            onStateCommitted(
+              frameWidthDp = it.getDouble("frameWidth"),
+              frameHeightDp = it.getDouble("frameHeight"),
+              contentRegionInsetDp = it.getDouble("contentRegionInset"),
+            )
+          }
         pushStateSnapshot()
         recomputeNativeGeometry()
       }
@@ -132,15 +149,14 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
   // MARK: - Internal
 
   private val sheetContainer = FrameLayout(context)
-  // The scrim is this view's background while visible, drawn below the sheet like any background.
-  // A background also marks the view as opaque to gesture systems that hit-test the view tree
-  // (react-native-gesture-handler), so they stop here instead of reaching views behind the sheet.
-  private val scrimDrawable = ColorDrawable(Color.TRANSPARENT)
+  private val scrimPaint = Paint(Paint.ANTI_ALIAS_FLAG)
   private var activeAnimation: SpringAnimation? = null
   private var activeAnimationEmitsSettle = false
   private var velocityTracker: VelocityTracker? = null
   private val density = context.resources.displayMetrics.density
   private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+  private val hitTestInverseMatrix = Matrix()
+  private val hitTestPoint = FloatArray(2)
   private val nestedScrollingParentHelper = NestedScrollingParentHelper(this)
 
   // Touch tracking
@@ -373,6 +389,11 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
     notifyCloseRequestStateChanged()
   }
 
+  override fun dispatchDraw(canvas: Canvas) {
+    drawScrim(canvas)
+    super.dispatchDraw(canvas)
+  }
+
   private fun layoutSheetChildren(containerWidth: Int, containerHeight: Int) {
     for (i in 0 until sheetContainer.childCount) {
       val child = sheetContainer.getChildAt(i)
@@ -405,6 +426,7 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
   // MARK: - Prop setters
 
   fun setDetents(raw: List<Map<String, Any>>) {
+    val previousTallestDetent = rawDetentSpecs.lastOrNull()
     rawDetentSpecs = raw.mapNotNull { dict ->
       val value = (dict["value"] as? Number)?.toDouble() ?: return@mapNotNull null
       val kind =
@@ -418,6 +440,17 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
         if (kind == DetentKind.POINTS) (value * density).toFloat() else value.toFloat()
       RawDetentSpec(value = nativeValue, kind = kind, programmatic = programmatic)
     }
+    // The tallest detent bounds the content region, so its inset must be
+    // re-derived — and republished when it changed — before the detents are
+    // re-resolved against the current layout.
+    if (hasLaidOut && rawDetentSpecs.lastOrNull() != previousTallestDetent) {
+      // The content stays laid out against the previous region until Fabric
+      // commits the new inset; hold its measurement until then. Decided from
+      // the detents alone so it also holds while detached, when no geometry
+      // can be pushed.
+      isContentRegionChangePending = true
+    }
+    recomputeNativeGeometry()
     refreshDetentsFromLayout()
   }
 
@@ -430,6 +463,20 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
       notifyCloseRequestStateChanged()
       return
     }
+
+    if (newIndex >= detentSpecs.size) {
+      // The resolved detents lag the raw specs while a content measurement is
+      // held (see isContentRegionChangePending): `detents` and `index` arrive
+      // in one update, so an index that only the new detents cover is retained
+      // and replayed once they resolve rather than dropped — or clamped by the
+      // deferred initial open below.
+      if (newIndex < rawDetentSpecs.size) {
+        pendingIndex = newIndex
+      }
+      return
+    }
+    // A newer request supersedes a retained one.
+    pendingIndex = null
 
     if (pendingInitialContentDetentSnap) {
       // The initial open is still deferred because the target content detent is
@@ -444,13 +491,23 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
       return
     }
 
-    if (newIndex >= detentSpecs.size || newIndex == targetIndex) return
+    if (newIndex == targetIndex) return
     snapToIndex(newIndex, 0f, emitIndexChange = false)
+  }
+
+  // Applies an index that was requested before the resolved detents covered it.
+  // Runs after every detent resolution; a drag in progress keeps it waiting,
+  // and the user's snap at the end of the drag drops it.
+  private fun replayPendingIndexIfResolved() {
+    val index = pendingIndex ?: return
+    if (!hasLaidOut || isPanning || index >= detentSpecs.size) return
+    pendingIndex = null
+    setIndex(index)
   }
 
   fun setScrimColor(color: Int?) {
     scrimColor = color ?: Color.TRANSPARENT
-    renderScrim()
+    invalidate()
   }
 
   fun setScrimOpacities(values: List<Float>) {
@@ -514,6 +571,11 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
   }
 
   private fun refreshDetentsFromLayout() {
+    resolveDetentsFromLayout()
+    replayPendingIndexIfResolved()
+  }
+
+  private fun resolveDetentsFromLayout() {
     if (!isPanning) {
       activeDragRange = null
       activeDragDetentSpecs = null
@@ -549,7 +611,6 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
         firstNonZeroDetentHeight > 0f &&
         currentSheetHeight() + 0.5f >= firstNonZeroDetentHeight
     detentSpecs = resolvedDetents
-    pushNativeGeometry()
     if (width > 0 && height > 0 && detentSpecs.isNotEmpty()) {
       layoutSheetContainer(width, height)
 
@@ -631,6 +692,21 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
   }
 
   private fun validContentHeight(): Float {
+    if (isContentRegionChangePending) {
+      // The content — and thus its marker — is laid out against the applied
+      // inset. Until that is the inset the current detents call for, the
+      // measurement describes the previous region and is treated as
+      // unavailable.
+      val expectedInsetDp = expectedContentRegionInsetDp()
+      if (
+        !expectedInsetDp.isFinite() ||
+          !appliedContentRegionInsetDp.isFinite() ||
+          kotlin.math.abs(appliedContentRegionInsetDp - expectedInsetDp) > 0.01f
+      ) {
+        return Float.NaN
+      }
+      isContentRegionChangePending = false
+    }
     return currentContentHeight().takeIf { it.isFinite() && it > 0f } ?: Float.NaN
   }
 
@@ -716,15 +792,22 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
     return null
   }
 
+  // The content wrapper: the surface is its sibling, so skip it and the wrapper
+  // is whatever else the sheet mounts.
+  private fun findContentView(): ViewGroup? =
+    (0 until sheetContainer.childCount)
+      .map { sheetContainer.getChildAt(it) }
+      .firstOrNull { it !== surfaceView } as? ViewGroup
+
   private fun findContentHeightMarker(): View? {
-    // The surface is a sibling of the content wrapper; skip it so the marker is
-    // always read from the content, never from the surface.
-    val contentView =
-      (0 until sheetContainer.childCount)
-        .map { sheetContainer.getChildAt(it) }
-        .firstOrNull { it !== surfaceView } as? ViewGroup ?: return null
-    if (contentView.childCount == 0) return null
-    return contentView.getChildAt(contentView.childCount - 1)
+    // Always read the marker from the content, never from the surface.
+    val contentView = findContentView() ?: return null
+    // The marker is identified by the nativeID the JS side gives it, not by
+    // its position: Fabric mounts siblings sorted by zIndex, so any content
+    // child with a positive zIndex lands after the marker in the wrapper.
+    return (0 until contentView.childCount)
+      .map { contentView.getChildAt(it) }
+      .firstOrNull { it.getTag(R.id.view_tag_native_id) == CONTENT_HEIGHT_MARKER_NATIVE_ID }
   }
 
   // MARK: - Snap logic
@@ -870,13 +953,33 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
     }
 
   /**
-   * Re-derives all natively measured geometry from this view's own size, window position, and the
-   * window's top inset, then pushes it into the shadow tree: the sheet frame (consumed by the
-   * component descriptor only in overlay mode, exactly as <Modal> does) and the content region's
-   * top inset (applied as Yoga top padding in every mode, so in-flow content lays out exactly
-   * within the detent cap). Yoga thus lays the sheet subtree out against real window geometry
-   * instead of JS-provided dimensions (issue #48). In overlay mode this view fills the dialog, so
-   * its own metrics are the dialog's.
+   * The height of the content region: the Yoga box the sheet's in-flow children (the `flex: 1`
+   * content wrapper) are laid out in. It is the tallest height the sheet can reach — the tallest
+   * detent's upper bound, clamped to the cap — rather than the cap itself, so a scrollable under a
+   * fixed or percentage tallest detent is laid out against the height it can actually show instead
+   * of leaving its last rows below the screen edge. A trailing `content` detent is bounded by the
+   * cap alone: its resolved height is measured from this very region, so bounding the region by it
+   * would be circular.
+   */
+  private fun contentRegionHeightPx(capPx: Float): Float {
+    val tallest = rawDetentSpecs.lastOrNull() ?: return capPx
+    val bound =
+      when (tallest.kind) {
+        DetentKind.POINTS -> tallest.value
+        DetentKind.PERCENTAGE -> capPx * tallest.value
+        DetentKind.CONTENT -> capPx
+      }
+    return bound.coerceIn(0f, capPx)
+  }
+
+  /**
+   * Re-derives all natively measured geometry from this view's own size, window position, the
+   * window's top inset, and the tallest detent, then pushes it into the shadow tree: the sheet
+   * frame (consumed by the component descriptor only in overlay mode, exactly as <Modal> does) and
+   * the content region's inset (applied as Yoga bottom padding in every mode, so in-flow content
+   * lays out exactly within the region the sheet can show; see [contentRegionHeightPx]). Yoga thus
+   * lays the sheet subtree out against real window geometry instead of JS-provided dimensions
+   * (issue #48). In overlay mode this view fills the dialog, so its own metrics are the dialog's.
    */
   private fun recomputeNativeGeometry() {
     if (width <= 0 || height <= 0 || !isAttachedToWindow) return
@@ -896,28 +999,86 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
 
     val capChanged = cap != nativeCapPx
     nativeCapPx = cap
-    // Re-resolve before pushing: percentage detents, and so the content region, follow the cap.
-    if (capChanged) refreshDetentsFromLayout()
-    pushNativeGeometry()
-    if (capChanged) requestLayout()
+    pushGeometryState(width, height, height - contentRegionHeightPx(cap))
+    if (capChanged) {
+      refreshDetentsFromLayout()
+      requestLayout()
+    }
   }
 
-  /** Pushes this view's size and the inset of the content region (see [contentRegionHeight]). */
-  private fun pushNativeGeometry() {
-    if (width <= 0 || height <= 0) return
-    pushGeometryState(width, height, height - contentRegionHeight())
+  // The content region height (px) a detents change moved the layout to, while
+  // Fabric has yet to lay the content out against it. Resolving a `content`
+  // detent from the stale measurement could trip the ascending-order check: a
+  // filling scrollable measured in a 300dp region cannot sit above a 500dp
+  // detent that the same update introduced. NaN when nothing is pending.
+  private var isContentRegionChangePending = false
+
+  // The content-region inset (dp) of the state Fabric last committed, recorded
+  // mid-batch. NaN before the first commit.
+  private var committedContentRegionInsetDp = Float.NaN
+
+  // The frame size (dp) of the state Fabric last committed, recorded mid-batch.
+  // In native-overlay mode the sheet node is sized from this state, so a commit
+  // that carries a new frame is one that re-measured the content against it.
+  // NaN before the first commit.
+  private var committedFrameWidthDp = Float.NaN
+  private var committedFrameHeightDp = Float.NaN
+
+  // The committed inset once its mount batch has completed, so the content —
+  // and its marker — is laid out against it. Only this value vouches for a
+  // content measurement: mid-batch, the children may not have been re-measured
+  // yet. NaN before the first batch completes.
+  private var appliedContentRegionInsetDp = Float.NaN
+
+  // The content-region inset (dp) the current detents and cap call for: what
+  // recomputeNativeGeometry pushes, computable even while detached.
+  private fun expectedContentRegionInsetDp(): Float {
+    if (height <= 0) return Float.NaN
+    return (height - contentRegionHeightPx(resolvedMaxDetentHeight())) / density
+  }
+
+  private val contentRegionCommitPass = Runnable {
+    appliedContentRegionInsetDp = committedContentRegionInsetDp
+    // needsCustomLayoutForChildren: Fabric only re-measured the children, so
+    // give the content wrapper its fresh measured bounds — Android hit-testing
+    // is bounds-based, and a wrapper still sized to a shorter region would make
+    // the content laid out below it untouchable. Then re-resolve any `content`
+    // detent that was waiting for the fresh measurement.
+    if (width > 0 && height > 0) {
+      layoutSheetContainer(width, height)
+    }
+    refreshDetentsFromLayout()
   }
 
   /**
-   * The tallest height the sheet can show, which bounds the in-flow content. A `content` detent is
-   * measured against the full cap; otherwise the tallest detent bounds the content, so a filling
-   * scrollable ends on screen instead of below it.
+   * Records the state Fabric committed: the sheet's frame size and the content-region inset. The
+   * content wrapper is re-measured in the same mount batch whenever either changed (the inset is
+   * its Yoga padding; in native-overlay mode the sheet node is sized from the frame), so once the
+   * batch completes its measured size and the content marker reflect the new state: the posted pass
+   * then marks the inset applied, places the children at their new sizes, and re-resolves the
+   * detents.
+   *
+   * The frame counts on its own because a rotation can leave the inset unchanged: the overlay
+   * window resizes first, the host's own layout places the content against its old measure, and
+   * only this commit's batch re-measures it. Without a pass after that batch the content keeps its
+   * pre-rotation frame, and Android hit-testing ignores everything laid out past it.
    */
-  private fun contentRegionHeight(): Float {
-    val cap = resolvedMaxDetentHeight()
-    if (rawDetentSpecs.any { it.kind == DetentKind.CONTENT }) return cap
-    val tallest = detentSpecs.lastOrNull()?.height ?: return cap
-    return if (tallest > 0f) tallest.coerceAtMost(cap) else cap
+  fun onStateCommitted(frameWidthDp: Double, frameHeightDp: Double, contentRegionInsetDp: Double) {
+    val inset = contentRegionInsetDp.toFloat()
+    val frameWidth = frameWidthDp.toFloat()
+    val frameHeight = frameHeightDp.toFloat()
+    if (
+      inset == committedContentRegionInsetDp &&
+        frameWidth == committedFrameWidthDp &&
+        frameHeight == committedFrameHeightDp
+    ) {
+      return
+    }
+    committedContentRegionInsetDp = inset
+    committedFrameWidthDp = frameWidth
+    committedFrameHeightDp = frameHeight
+    removeCallbacks(contentRegionCommitPass)
+    post(contentRegionCommitPass)
   }
 
   private fun pushGeometryState(widthPx: Int, heightPx: Int, insetTopPx: Float) {
@@ -988,6 +1149,10 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
     preserveScrimPin: Boolean = false,
   ) {
     if (index < 0 || index >= detentSpecs.size) return
+    if (emitIndexChange) {
+      // A user-driven snap supersedes an index retained from props.
+      pendingIndex = null
+    }
     targetIndex = index
     if (!isTargetingClosedDetent) {
       suppressScrimForClosingTarget = false
@@ -1129,6 +1294,9 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
         activePointerId = event.getPointerId(0)
         scrimPressed = true
         scrimTouchActive = true
+        // Interception alone does not cancel RNGH handlers on views beneath the scrim:
+        // their recognizers run at an ancestor, which must also yield the touch stream.
+        announceGestureTakeover(event)
         return true
       }
       return false
@@ -1287,6 +1455,8 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
 
   private fun beginPan(event: MotionEvent) {
     isPanning = true
+    // The user takes control: drop any index retained from props.
+    pendingIndex = null
     scrimPinnedFull = false
     panStartingIndex = targetIndex
     val dragDetentSpecs = detentSpecs.toList()
@@ -1306,6 +1476,8 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
   private fun beginNestedPanIfNeeded() {
     if (isPanning) return
     isPanning = true
+    // The user takes control: drop any index retained from props.
+    pendingIndex = null
     scrimPinnedFull = false
     panStartingIndex = targetIndex
     val dragDetentSpecs = detentSpecs.toList()
@@ -1606,30 +1778,87 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
     ) {
       return null
     }
-    return findScrollableAtPoint(sheetContainer, containerX, containerY)
+    return (findScrollableAtPoint(sheetContainer, containerX, containerY) as? TouchHit.Scrollable)
+      ?.view
   }
 
-  private fun findScrollableAtPoint(view: View, x: Float, y: Float): View? {
-    if (!view.isShown) return null
+  private sealed interface TouchHit {
+    /** Nothing here takes the touch; views underneath may. */
+    object Miss : TouchHit
 
-    if (view is ViewGroup) {
+    /** A non-scrollable view takes the touch, shielding views underneath. */
+    object Blocked : TouchHit
+
+    class Scrollable(val view: View) : TouchHit
+  }
+
+  // Mirrors RN's TouchTargetHelper: the topmost child that can take the touch
+  // (per pointerEvents) wins, and the result is the nearest vertically
+  // scrollable ancestor of that target. A view drawn over a scrollable (e.g. an
+  // absolutely positioned header) therefore shields it.
+  private fun findScrollableAtPoint(view: View, x: Float, y: Float): TouchHit {
+    if (!view.isShown) return TouchHit.Miss
+
+    var pointerEvents =
+      when (view) {
+        is ReactPointerEventsView -> view.pointerEvents
+        // RN scroll views expose pointerEvents without implementing ReactPointerEventsView.
+        is ReactScrollView -> view.pointerEvents
+        is ReactHorizontalScrollView -> view.pointerEvents
+        else -> PointerEvents.AUTO
+      }
+    if (!view.isEnabled) {
+      pointerEvents =
+        when (pointerEvents) {
+          PointerEvents.AUTO -> PointerEvents.BOX_NONE
+          PointerEvents.BOX_ONLY -> PointerEvents.NONE
+          else -> pointerEvents
+        }
+    }
+    if (pointerEvents == PointerEvents.NONE) return TouchHit.Miss
+
+    var childBlocked = false
+    if (view is ViewGroup && pointerEvents != PointerEvents.BOX_ONLY) {
       for (i in view.childCount - 1 downTo 0) {
         val child = view.getChildAt(i)
-        val childX = x - child.left - child.translationX
-        val childY = y - child.top - child.translationY
+        // Transform-aware, like TouchTargetHelper.getChildPoint: the child's
+        // matrix carries translation, scale and rotation around its pivot.
+        var childX = x + view.scrollX - child.left
+        var childY = y + view.scrollY - child.top
+        val childMatrix = child.matrix
+        if (!childMatrix.isIdentity) {
+          // A non-invertible matrix (scale 0) leaves the inverse untouched, so
+          // mapping with it would use another view's inverse. Such a child has
+          // no area and cannot be hit; skip it like TouchTargetHelper does.
+          if (!childMatrix.invert(hitTestInverseMatrix)) continue
+          hitTestPoint[0] = childX
+          hitTestPoint[1] = childY
+          hitTestInverseMatrix.mapPoints(hitTestPoint)
+          childX = hitTestPoint[0]
+          childY = hitTestPoint[1]
+        }
         if (childX < 0f || childX >= child.width || childY < 0f || childY >= child.height) {
           continue
         }
-        findScrollableAtPoint(child, childX, childY)?.let {
-          return it
+        when (val hit = findScrollableAtPoint(child, childX, childY)) {
+          is TouchHit.Scrollable -> return hit
+          TouchHit.Blocked -> {
+            childBlocked = true
+            break
+          }
+          TouchHit.Miss -> Unit
         }
       }
     }
 
     if (isVerticallyScrollable(view)) {
-      return view
+      return TouchHit.Scrollable(view)
     }
-    return null
+    return if (childBlocked || pointerEvents != PointerEvents.BOX_NONE) {
+      TouchHit.Blocked
+    } else {
+      TouchHit.Miss
+    }
   }
 
   private fun isVerticallyScrollable(view: View): Boolean {
@@ -1691,6 +1920,12 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
     lastGeometryStateWidth = 0
     lastGeometryStateHeight = 0
     lastGeometryStateInsetTop = Float.NaN
+    isContentRegionChangePending = false
+    committedContentRegionInsetDp = Float.NaN
+    committedFrameWidthDp = Float.NaN
+    committedFrameHeightDp = Float.NaN
+    appliedContentRegionInsetDp = Float.NaN
+    removeCallbacks(contentRegionCommitPass)
     clearPendingInitialContentDetentSnap()
     contentHeightMarker?.removeOnLayoutChangeListener(contentHeightMarkerLayoutListener)
     contentHeightMarker = null
@@ -1714,7 +1949,6 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
     scrimPressed = false
     scrimTouchActive = false
     scrimProgress = 0f
-    renderScrim()
     suppressScrimForClosingTarget = false
     sheetContainer.removeAllViews()
     stateWrapper = null
@@ -1726,7 +1960,7 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
   private fun updateScrim(position: Float = currentSheetHeight()) {
     if (!modal) {
       scrimProgress = 0f
-      renderScrim()
+      invalidate()
       return
     }
 
@@ -1746,12 +1980,12 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
     // re-anchor settles.
     if (scrimPinnedFull) {
       scrimProgress = fullyOpenScrimOpacity()
-      renderScrim()
+      invalidate()
       return
     }
 
     scrimProgress = scrimOpacityAt(position)
-    renderScrim()
+    invalidate()
   }
 
   /** The opacity at the tallest detent, held while the sheet re-anchors. */
@@ -1798,7 +2032,7 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
 
   private fun hideScrim() {
     scrimProgress = 0f
-    renderScrim()
+    invalidate()
   }
 
   internal val isInteractive: Boolean
@@ -1823,18 +2057,23 @@ class BottomSheetHostView(context: Context) : ReactViewGroup(context), NestedScr
 
   private fun isScrimVisible(): Boolean = modal && scrimProgress > 0.001f
 
-  private fun renderScrim() {
-    if (!isScrimVisible()) {
-      if (background != null) background = null
+  private fun drawScrim(canvas: Canvas) {
+    if (!modal || scrimProgress <= 0.001f) {
       return
     }
+
     val alpha = (Color.alpha(scrimColor) * scrimProgress).toInt().coerceIn(0, 255)
-    scrimDrawable.color =
+    scrimPaint.color =
       Color.argb(alpha, Color.red(scrimColor), Color.green(scrimColor), Color.blue(scrimColor))
-    if (background !== scrimDrawable) background = scrimDrawable
+    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), scrimPaint)
   }
 
   companion object {
+    // The `nativeID` the JS side gives the zero-height marker it appends to
+    // the content wrapper. Mirrored in `BottomSheet.tsx` and
+    // `BottomSheetHostingView.swift`; keep the three in sync.
+    const val CONTENT_HEIGHT_MARKER_NATIVE_ID = "swm-bottom-sheet-content-height-marker"
+
     // Upper bound on pre-draw passes spent waiting for the initial content
     // detent to become measurable. This is a safety valve, not the completion
     // mechanism: the snap is driven by the marker layout listener and the

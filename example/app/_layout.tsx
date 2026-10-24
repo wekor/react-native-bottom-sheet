@@ -18,6 +18,10 @@ export default function RootLayout() {
           >
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen
+              name="scrim-pressables"
+              options={{ title: 'Scrim press isolation', headerShown: false }}
+            />
+            <Stack.Screen
               name="basic-modal"
               options={{ title: 'Basic modal', headerShown: false }}
             />
@@ -66,12 +70,23 @@ export default function RootLayout() {
               options={{ title: 'Modal with ScrollView', headerShown: false }}
             />
             <Stack.Screen
+              name="draggable-grabber"
+              options={{ title: 'Draggable grabber', headerShown: false }}
+            />
+            <Stack.Screen
               name="modal-flat-list"
               options={{ title: 'Modal with FlatList', headerShown: false }}
             />
             <Stack.Screen
               name="fixed-height-list"
               options={{ title: 'Fixed-height list', headerShown: false }}
+            />
+            <Stack.Screen
+              name="fixed-detent-scroll-view"
+              options={{
+                title: 'Fixed detent ScrollView',
+                headerShown: false,
+              }}
             />
             <Stack.Screen
               name="keyboard-content-detent"
@@ -149,6 +164,13 @@ export default function RootLayout() {
             <Stack.Screen
               name="dynamic-content-height"
               options={{ title: 'Dynamic content height', headerShown: false }}
+            />
+            <Stack.Screen
+              name="z-indexed-content"
+              options={{
+                title: 'Content with zIndex children',
+                headerShown: false,
+              }}
             />
             <Stack.Screen
               name="snap-callbacks"
