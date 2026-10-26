@@ -30,7 +30,7 @@
     },
     "example": {
       "name": "@wekor/react-native-bottom-sheet-example",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "dependencies": {
         "@expo/metro-runtime": "~56.0.13",
         "@expo/vector-icons": "^15.0.2",
