@@ -81,11 +81,10 @@ const LazyContent = ({
 }) => {
   const sheetBottomPadding = useSheetBottomPadding(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: report only the mount and unmount of this content
   useEffect(() => {
     onMount();
     return onUnmount;
-    // Report only the mount and unmount of this content.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

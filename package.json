@@ -44,7 +44,9 @@
     "test:android:instrumented": "./example/android/gradlew --project-dir example/android :wekor_react-native-bottom-sheet:connectedDebugAndroidTest",
     "test:android:unit": "./example/android/gradlew --project-dir example/android :wekor_react-native-bottom-sheet:testDebugUnitTest",
     "typecheck": "tsc && tsc -p example",
-    "lint": "eslint \"**/*.{js,ts,tsx}\""
+    "check": "biome check",
+    "fix": "biome check --write",
+    "format": "biome format --write"
   },
   "keywords": [
     "react-native",
@@ -65,17 +67,11 @@
     "registry": "https://registry.npmjs.org"
   },
   "devDependencies": {
-    "@eslint/compat": "2.1.0",
-    "@eslint/eslintrc": "3.3.5",
-    "@eslint/js": "9.39.4",
+    "@biomejs/biome": "2.5.15",
     "@react-native/babel-preset": "0.85.3",
-    "@react-native/eslint-config": "0.85.3",
     "@types/react": "19.2.15",
     "babel-plugin-react-compiler": "1.0.0",
     "del-cli": "6.0.0",
-    "eslint": "9.39.4",
-    "eslint-config-prettier": "10.1.8",
-    "eslint-plugin-prettier": "5.5.6",
     "lefthook": "2.1.9",
     "prettier": "3.8.3",
     "react": "19.2.3",

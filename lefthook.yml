@@ -8,9 +8,9 @@ pre-commit:
       run: swiftformat {staged_files}
       glob: 'ios/**/*.swift'
       stage_fixed: true
-    - name: eslint
-      run: bun eslint --fix {staged_files}
-      glob: '*.{js,ts,tsx}'
+    - name: biome
+      run: bun biome check --write --no-errors-on-unmatched {staged_files}
+      glob: '*.{js,mjs,ts,tsx}'
       stage_fixed: true
     - name: prettier
       run: bun prettier --write {staged_files}
