@@ -4,12 +4,18 @@ name: CI
 #
 # This workflow runs on every PR and covers the JS side. The native builds live
 # in android.yml and ios.yml, which only run when their sources change.
-#
-# release-please opens its release PR with GITHUB_TOKEN, and GitHub doesn't
-# start workflows for events created by that token, so no workflow runs on it.
 on:
   pull_request:
     branches: [main]
+    # release-please's release PR touches only these files (version bump +
+    # changelog). Skipping it avoids the run GitHub would otherwise hold for
+    # approval because a bot opened the PR. Caveat: a PR that changes nothing
+    # but these files skips CI too.
+    paths-ignore:
+      - CHANGELOG.md
+      - .release-please-manifest.json
+      - package.json
+      - example/app.json
   merge_group:
     types: [checks_requested]
 concurrency:

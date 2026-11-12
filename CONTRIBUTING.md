@@ -54,7 +54,7 @@ touches:
 - `ios.yml` (when `ios/`, the podspec or a shared path changes): an iOS build of
   the example, cached by Turbo across pushes to the same PR.
 
-Shared paths are `src/`, `common/`, `example/`, `package.json`, `bun.lock`,
+Shared paths are `src/`, `common/`, `example/`, `bun.lock`,
 `react-native.config.js` and the CI setup; keep the lists in `android.yml` and
 `ios.yml` in sync. A docs-only PR runs `ci.yml` alone.
 
@@ -71,5 +71,4 @@ patch, `feat` → minor (breaking changes also bump minor while we're on 0.x).
 To publish, merge that release PR. The `Release` workflow
 (`.github/workflows/publish.yml`) then tags `vX.Y.Z`, creates the GitHub
 release, and publishes to npm via Trusted Publishing. Nothing runs locally. No
-CI runs on the release PR: release-please opens it with `GITHUB_TOKEN`, which
-doesn't start workflows, and it only changes the version and changelog.
+CI runs on the release PR, since it only changes the version and changelog.

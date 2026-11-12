@@ -13,7 +13,10 @@ on:
       - src/**
       - common/**
       - example/**
-      - package.json
+      # The release PR (see ci.yml) only bumps the version in package.json and
+      # example/app.json, so neither triggers a native build; dependency
+      # changes still reach bun.lock.
+      - '!example/app.json'
       - bun.lock
       - react-native.config.js
       - .nvmrc

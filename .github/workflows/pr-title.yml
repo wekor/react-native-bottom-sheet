@@ -8,6 +8,12 @@ on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
     branches: [main]
+    # Same exclusion as ci.yml: release-please's own PR.
+    paths-ignore:
+      - CHANGELOG.md
+      - .release-please-manifest.json
+      - package.json
+      - example/app.json
 
 permissions:
   contents: read
