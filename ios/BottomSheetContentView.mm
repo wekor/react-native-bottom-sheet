@@ -50,24 +50,34 @@
   return _impl.sheetContainer;
 }
 
-- (NSInteger)scrollableExpandNegotiation
+- (NSInteger)scrollExpandCoordination
 {
-  return _impl.scrollableExpandNegotiation;
+  return _impl.scrollExpandCoordination;
 }
 
-- (void)setScrollableExpandNegotiation:(NSInteger)scrollableExpandNegotiation
+- (void)setScrollExpandCoordination:(NSInteger)scrollExpandCoordination
 {
-  _impl.scrollableExpandNegotiation = scrollableExpandNegotiation;
+  _impl.scrollExpandCoordination = scrollExpandCoordination;
 }
 
-- (NSInteger)scrollableCollapseNegotiation
+- (NSInteger)scrollCollapseCoordination
 {
-  return _impl.scrollableCollapseNegotiation;
+  return _impl.scrollCollapseCoordination;
 }
 
-- (void)setScrollableCollapseNegotiation:(NSInteger)scrollableCollapseNegotiation
+- (void)setScrollCollapseCoordination:(NSInteger)scrollCollapseCoordination
 {
-  _impl.scrollableCollapseNegotiation = scrollableCollapseNegotiation;
+  _impl.scrollCollapseCoordination = scrollCollapseCoordination;
+}
+
+- (NSTimeInterval)settleDuration
+{
+  return _impl.settleDuration;
+}
+
+- (void)setSettleDuration:(NSTimeInterval)settleDuration
+{
+  _impl.settleDuration = settleDuration;
 }
 
 - (BOOL)modal
@@ -95,14 +105,14 @@
   [_impl contentRegionLayoutDidApply];
 }
 
-- (void)setExtendUnderStatusBar:(BOOL)extendUnderStatusBar
-{
-  _impl.extendUnderStatusBar = extendUnderStatusBar;
-}
-
 - (CGFloat)contentRegionInset
 {
   return _impl.contentRegionInset;
+}
+
+- (CGFloat)surfaceOverflowHolding:(CGFloat)previous
+{
+  return [_impl surfaceOverflowWithHolding:previous];
 }
 
 - (void)setDetentIndex:(NSInteger)newIndex
@@ -115,14 +125,39 @@
   _impl.scrimColor = color;
 }
 
-- (void)setScrimOpacities:(NSArray<NSNumber *> *)opacities
+- (void)setScrimAccessibilityLabel:(NSString *)label
 {
-  [_impl setScrimOpacities:opacities];
+  _impl.scrimAccessibilityLabel = label;
+}
+
+- (void)setSurfaceCornerRadii:(NSArray<NSNumber *> *)radii
+{
+  [_impl setSurfaceCornerRadii:radii];
+}
+
+- (void)setSurfaceCornerCurve:(NSString *)curve
+{
+  [_impl setSurfaceCornerCurve:curve];
+}
+
+- (void)setSurfaceShadows:(NSArray<NSDictionary *> *)shadows
+{
+  [_impl setSurfaceShadows:shadows];
+}
+
+- (CGFloat)currentContentOffsetX
+{
+  return _impl.currentContentOffsetX;
 }
 
 - (CGFloat)currentContentOffsetY
 {
   return _impl.currentContentOffsetY;
+}
+
+- (CGFloat)currentContentScale
+{
+  return _impl.currentContentScale;
 }
 
 - (BOOL)isModalAccessibilityActive

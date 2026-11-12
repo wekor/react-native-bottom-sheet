@@ -13,6 +13,7 @@ internal class PortalCloseRequestController(
   private val view: View,
   private val currentActivity: () -> Activity?,
   private val emitCloseRequest: () -> Boolean,
+  private val openOrder: () -> Int = { 0 },
 ) : PortalCloseRequestParticipant {
   private var inputState = CloseRequestInputState.INACTIVE
   private var usesPortalPresentation = false
@@ -28,6 +29,7 @@ internal class PortalCloseRequestController(
   private var backDispatcher: OnBackPressedDispatcher? = null
 
   private var backCallback: CloseRequestBackCallback? = null
+  private var legacyBackKeyRegistration: LegacyBackKeyRouting.Registration? = null
 
   private val lifecycleObserver: LifecycleEventObserver =
     LifecycleEventObserver { lifecycleOwner, event ->
@@ -54,6 +56,11 @@ internal class PortalCloseRequestController(
     inputState = state
     this.usesPortalPresentation = usesPortalPresentation
     syncRoutingContext()
+  }
+
+  fun onOpenOrderChanged() {
+    if (disposed) return
+    closeRequestRegistration?.updateOpenOrder(openOrder())
   }
 
   fun scheduleRoutingContextSync() {
@@ -123,6 +130,7 @@ internal class PortalCloseRequestController(
               resolvedRoutingContext.rootView,
               this,
               currentPortalState(),
+              openOrder(),
             )
         }
       } else if (resolvedRoutingContext != null && closeRequestRegistration == null) {
@@ -131,6 +139,7 @@ internal class PortalCloseRequestController(
             resolvedRoutingContext.rootView,
             this,
             currentPortalState(),
+            openOrder(),
           )
       }
     }
@@ -256,6 +265,10 @@ internal class PortalCloseRequestController(
         backCallback = newCallback
         hasBackCallbackPresentationEnded = false
         dispatcher.addCallback(newCallback)
+        legacyBackKeyRegistration =
+          (currentRoutingContext?.dispatcherOwner as? Activity)?.window?.let { window ->
+            LegacyBackKeyRouting.register(window, dispatcher, newCallback)
+          }
         newCallback.updateState(
           canReceiveBack = assignedCloseRequestAction != CloseRequestInputAction.PASS_THROUGH,
           currentAction = assignedCloseRequestAction,
@@ -305,6 +318,8 @@ internal class PortalCloseRequestController(
     val callback = backCallback
     backCallback = null
     backDispatcher = null
+    legacyBackKeyRegistration?.remove()
+    legacyBackKeyRegistration = null
     hasBackCallbackPresentationEnded = false
     callback?.dispose()
     callback?.remove()
