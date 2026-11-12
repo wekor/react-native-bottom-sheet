@@ -45,10 +45,18 @@ The squash commit takes the **PR title** as its message, so the title must
 follow Conventional Commits too (the `PR title` check enforces it). Merging a PR
 does not publish anything.
 
-CI (`.github/workflows/ci.yml`) runs on pull requests only: Biome, type check,
-the library build, Android JVM tests, Android instrumentation tests on API 35
-and 36 emulators, and an iOS build of the example. The iOS build is cached by
-Turbo and only reruns when the library's sources or the example change.
+CI runs on pull requests only, split by platform so a PR only waits for what it
+touches:
+
+- `ci.yml` (every PR): Biome, type check and the library build.
+- `android.yml` (when `android/` or a shared path changes): Android JVM tests
+  and instrumentation tests on API 35 and 36 emulators.
+- `ios.yml` (when `ios/`, the podspec or a shared path changes): an iOS build of
+  the example, cached by Turbo across pushes to the same PR.
+
+Shared paths are `src/`, `common/`, `example/`, `package.json`, `bun.lock`,
+`react-native.config.js` and the CI setup; keep the lists in `android.yml` and
+`ios.yml` in sync. A docs-only PR runs `ci.yml` alone.
 
 ## Publishing to npm
 
@@ -62,5 +70,6 @@ patch, `feat` → minor (breaking changes also bump minor while we're on 0.x).
 
 To publish, merge that release PR. The `Release` workflow
 (`.github/workflows/publish.yml`) then tags `vX.Y.Z`, creates the GitHub
-release, and publishes to npm via Trusted Publishing. Nothing runs locally. CI
-skips the release PR, since it only changes the version and changelog.
+release, and publishes to npm via Trusted Publishing. Nothing runs locally. No
+CI runs on the release PR: release-please opens it with `GITHUB_TOKEN`, which
+doesn't start workflows, and it only changes the version and changelog.
