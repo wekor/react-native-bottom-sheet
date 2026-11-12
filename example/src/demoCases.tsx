@@ -1,6 +1,10 @@
 export type CaseKey =
   | 'scrim-pressables'
   | 'basic-modal'
+  | 'accessible-dismissal'
+  | 'surface-style'
+  | 'corner-touches'
+  | 'detached-sheet'
   | 'lazy-mounted-modal'
   | 'native-overlay-modal'
   | 'native-overlay-nested'
@@ -21,13 +25,15 @@ export type CaseKey =
   | 'inline-flat-list'
   | 'inline-nested-flat-list'
   | 'invalid-detents'
-  | 'scrollable-negotiation'
+  | 'scroll-coordination'
+  | 'scroll-interaction'
   | 'programmatic-detent-drag'
   | 'percentage-detents'
   | 'dynamic-detents'
   | 'dynamic-content-height'
   | 'z-indexed-content'
   | 'snap-callbacks'
+  | 'settle-duration'
   | 'no-animate-in'
   | 'ui-thread-position'
   | 'ui-thread-modal-position';
@@ -49,6 +55,26 @@ export const DEMO_CASES: DemoCase[] = [
     key: 'basic-modal',
     title: 'Basic modal',
     href: '/basic-modal',
+  },
+  {
+    key: 'accessible-dismissal',
+    title: 'Accessible dismissal',
+    href: '/accessible-dismissal',
+  },
+  {
+    key: 'surface-style',
+    title: 'Surface style (card shape)',
+    href: '/surface-style',
+  },
+  {
+    key: 'corner-touches',
+    title: 'Corner touches',
+    href: '/corner-touches',
+  },
+  {
+    key: 'detached-sheet',
+    title: 'Detached sheet (gaps and insets)',
+    href: '/detached-sheet',
   },
   {
     key: 'lazy-mounted-modal',
@@ -77,7 +103,7 @@ export const DEMO_CASES: DemoCase[] = [
   },
   {
     key: 'close-request',
-    title: 'Android close requests',
+    title: 'Close requests',
     href: '/close-request',
   },
   {
@@ -152,9 +178,14 @@ export const DEMO_CASES: DemoCase[] = [
     throws: true,
   },
   {
-    key: 'scrollable-negotiation',
-    title: 'Scrollable negotiation modes',
-    href: '/scrollable-negotiation',
+    key: 'scroll-coordination',
+    title: 'Scroll coordination modes',
+    href: '/scroll-coordination',
+  },
+  {
+    key: 'scroll-interaction',
+    title: 'Scroll interaction',
+    href: '/scroll-interaction',
   },
   {
     key: 'programmatic-detent-drag',
@@ -185,6 +216,11 @@ export const DEMO_CASES: DemoCase[] = [
     key: 'snap-callbacks',
     title: 'Snap lifecycle callbacks',
     href: '/snap-callbacks',
+  },
+  {
+    key: 'settle-duration',
+    title: 'Settle duration',
+    href: '/settle-duration',
   },
   {
     key: 'no-animate-in',

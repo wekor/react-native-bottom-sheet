@@ -32,7 +32,8 @@ A closed modal sheet renders nothing by default, so its children and their
 effects run only while it is presented. The sheet mounts in the same render that
 `index` moves to an open detent, so `'content'` detents measure the children
 before it animates in, and it unmounts once it settles at a closed detent, after
-the closing animation.
+the closing animation. While unmounted, the sheet emits no `onPositionChange`
+events.
 
 Use `mount` to keep the children mounted, for example to preserve a form's input
 or a list's scroll position across openings:
@@ -51,6 +52,16 @@ or a list's scroll position across openings:
 
 An inline `BottomSheet` always keeps its children mounted.
 
+## Stacking
+
+When several modal sheets are open, the one opened most recently is on top,
+whatever order they appear in your tree. Reopening a sheet, even while it is
+still closing, brings it back to the top. `nativeOverlay` sheets are always
+above portal sheets and stack among themselves the same way. Close requests
+(Android Back and Escape) go to the top sheet, and a top sheet without
+`onCloseRequest` blocks those below it (see
+[Presentation ordering](#presentation-ordering)).
+
 ## Scrim
 
 Tapping the scrim collapses the sheet to the closed detent. Use `scrimColor` to
@@ -68,30 +79,65 @@ customize the scrim color:
 ```
 
 By default, the scrim fades in as the sheet opens and then holds at full
-opacity, so detents above the first share the same scrim. Use `scrimOpacities`
-to control the opacity at each detent: It takes one value in 0–1 per detent,
-indexed to match `detents`, and interpolates linearly as the sheet is dragged
-between them. A shorter array reuses its last value for any remaining detents.
+opacity, so detents above the first share the same scrim. Set a detent’s
+`scrimOpacity` to control the opacity there: It takes a value from 0 through 1
+(the library throws an `Error` otherwise) and interpolates linearly as the sheet
+is dragged between detents.
 
-The default maps each detent to 0 when it is closed and 1 otherwise, so the
-scrim is transparent at any closed detent and fully opaque at every open one.
+A detent without `scrimOpacity` defaults to 0 when it is closed and 1 otherwise,
+so the scrim is transparent at any closed detent and fully opaque at every open
+one.
 
-To keep the scrim deepening across every detent, pass one value per detent:
+To keep the scrim deepening across every detent, lower it at the shorter open
+ones:
 
 ```tsx
 <ModalBottomSheet
   index={index}
   onIndexChange={setIndex}
-  detents={[0, 300, 'content']}
+  detents={[0, { value: 300, scrimOpacity: 0.5 }, 'content']}
   scrimColor="rgba(0, 0, 0, 0.3)"
-  scrimOpacities={[0, 0.5, 1]}
   surface={/* ... */}
 >
   {/* ... */}
 </ModalBottomSheet>
 ```
 
-## Android close requests
+### Accessible dismissal
+
+Screen reader users can dismiss the sheet the same way a scrim tap does. While
+tapping the scrim would dismiss the sheet, the scrim above the sheet is exposed
+as a “Dismiss” button to VoiceOver and TalkBack. In
+addition:
+
+- On iOS, VoiceOver’s escape gesture (a two-finger Z) dismisses the sheet.
+- On Android, TalkBack offers a Dismiss action (in its actions menu) while focus
+  is inside the sheet’s content.
+
+These paths require a non-programmatic closed detent and a visible scrim—one
+whose opacity at the current position is above 0, even when `scrimColor` is
+transparent—and they select the closed detent directly, without calling
+`onCloseRequest`. While the scrim is visible but dismissal is unavailable, as
+with a programmatic-only closed detent, VoiceOver’s escape gesture is consumed
+by the sheet instead of reaching the screen behind it. A sheet that fills its
+host leaves no scrim for the button, but the escape gesture and dismiss action
+remain.
+
+Use `scrimAccessibilityLabel` to localize the button’s label, which defaults to
+“Dismiss”:
+
+```tsx
+<ModalBottomSheet
+  index={index}
+  onIndexChange={setIndex}
+  scrimAccessibilityLabel={t('close')}
+  surface={/* ... */}
+>
+  {/* ... */}
+</ModalBottomSheet>
+```
+
+## Close requests
 
 `onCloseRequest` is **Android only**. Android system Back, a committed
 predictive Back gesture, and a complete, unmodified physical-keyboard Escape
@@ -130,7 +176,7 @@ leaving the sheet open.
 
 ### Presentation ordering
 
-Portal presentations in the same Android window follow their portal order. The
+Portal presentations in the same Android window follow their open order. The
 topmost active portal receives the close request. A portal whose target is
 initially unresolved, already settled at zero height, or closed without a
 visible animation is skipped. A portal that is visibly animating closed remains
@@ -150,7 +196,7 @@ same Back pass-through and normal Escape behavior.
 ### Target eligibility
 
 Eligibility is based on the resolved native target height, not the detent index
-or current animated position. Numeric `0`, `0%`, and `programmatic(0)` are
+or current animated position. Numeric `0` and `0%`, programmatic or not, are
 closed targets. A `content` target becomes eligible only after measurement
 resolves it above zero. A sheet with no zero-height detent, such as
 `detents={[300, 600]}`, remains eligible at every target; the consumer can

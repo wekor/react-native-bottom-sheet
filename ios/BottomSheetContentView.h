@@ -23,8 +23,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) BOOL animateIn;
 @property (nonatomic) BOOL animateContentHeight;
 @property (nonatomic) BOOL modal;
-@property (nonatomic) NSInteger scrollableExpandNegotiation;
-@property (nonatomic) NSInteger scrollableCollapseNegotiation;
+@property (nonatomic) NSInteger scrollExpandCoordination;
+@property (nonatomic) NSInteger scrollCollapseCoordination;
+@property (nonatomic) NSTimeInterval settleDuration;
 @property (nonatomic, readonly) UIView *sheetContainer;
 @property (nonatomic, readonly) BOOL isModalAccessibilityActive;
 
@@ -35,16 +36,25 @@ NS_ASSUME_NONNULL_BEGIN
 // layout, so content laid out against the committed content-region inset is
 // measurable again.
 - (void)contentRegionLayoutDidApply;
-// Whether full-height detents may extend under the status bar; feeds the
-// natively computed detent cap.
-- (void)setExtendUnderStatusBar:(BOOL)extendUnderStatusBar;
 // The natively measured inset of the content region: the gap between the
-// sheet's height and the detent cap.
+// sheet's height and the content region's.
 - (CGFloat)contentRegionInset;
+// How far the surface extends below the sheet, in layout units. A moving sheet
+// keeps at least `previous`, the overflow last reported.
+- (CGFloat)surfaceOverflowHolding:(CGFloat)previous;
 - (void)setDetentIndex:(NSInteger)newIndex;
 - (void)setScrimColor:(UIColor *_Nullable)color;
-- (void)setScrimOpacities:(NSArray<NSNumber *> *)opacities;
+- (void)setScrimAccessibilityLabel:(NSString *_Nullable)label;
+// Physical corner radii of the card (top-left, top-right, bottom-right,
+// bottom-left) and its corner curve ("circular" or "continuous").
+- (void)setSurfaceCornerRadii:(NSArray<NSNumber *> *)radii;
+- (void)setSurfaceCornerCurve:(NSString *)curve;
+// Outset card shadows: dictionaries of offsetX, offsetY, blurRadius,
+// spreadDistance, a UIColor (possibly dynamic), opacity and excludesInterior.
+- (void)setSurfaceShadows:(NSArray<NSDictionary *> *)shadows;
+- (CGFloat)currentContentOffsetX;
 - (CGFloat)currentContentOffsetY;
+- (CGFloat)currentContentScale;
 - (void)mountChildComponentView:(UIView *)childView atIndex:(NSInteger)index;
 - (void)unmountChildComponentView:(UIView *)childView;
 - (void)mountSurfaceComponentView:(UIView *)surfaceView atIndex:(NSInteger)index;

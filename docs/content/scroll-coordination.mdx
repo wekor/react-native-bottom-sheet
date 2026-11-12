@@ -1,16 +1,16 @@
 ---
-title: Scrollable negotiation
+title: Scroll coordination
 ---
 
-# Scrollable negotiation
+# Scroll coordination
 
-`scrollableNegotiation` controls how vertical gestures that start inside a
-nested scrollable, such as a `ScrollView` or `FlatList`, interact with the
-sheet. Expansion and collapse can be configured independently:
+`scrollCoordination` controls how vertical gestures that start inside a nested
+scrollable, such as a `ScrollView` or `FlatList`, interact with the sheet.
+Expansion and collapse can be configured independently:
 
 ```tsx
 <BottomSheet
-  scrollableNegotiation={{
+  scrollCoordination={{
     expand: 'handoff',
     collapse: 'initial',
   }}
@@ -44,19 +44,30 @@ boundary does not fling the content.
 Pass a string to use the same mode in both directions:
 
 ```tsx
-<BottomSheet scrollableNegotiation="none">{/* ... */}</BottomSheet>
+<BottomSheet scrollCoordination="none">{/* ... */}</BottomSheet>
 ```
 
 Or pass an object to configure the directions separately:
 
 ```tsx
-<BottomSheet scrollableNegotiation={{ expand: 'initial', collapse: 'handoff' }}>
+<BottomSheet scrollCoordination={{ expand: 'initial', collapse: 'handoff' }}>
   {/* ... */}
 </BottomSheet>
 ```
 
 Gestures that start outside a scrollable are unaffected and continue to move the
 sheet normally.
+
+On iOS and Android, a drag that starts diagonally inside a vertical scrollable
+is resolved like a vertical one: the sheet takes any start the scrollable would
+have accepted as a scroll, so a shallow angle cannot scroll content the sheet
+would otherwise move, although on iOS the content may move briefly before the
+sheet takes the drag. A horizontal scrollable under the touch keeps sideways
+gestures as before. On every platform, a vertical start in a direction the sheet
+cannot move, such as downward at its lowest draggable detent, stays with the
+scrollable. On iOS, if the drag reverses into a `handoff` direction, the sheet
+can take over without lifting once any bounce or refresh pull has scrolled back;
+an `initial` direction keeps the original owner.
 
 ## Platform support
 

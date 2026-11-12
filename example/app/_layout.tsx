@@ -26,6 +26,22 @@ export default function RootLayout() {
               options={{ title: 'Basic modal', headerShown: false }}
             />
             <Stack.Screen
+              name="accessible-dismissal"
+              options={{ title: 'Accessible dismissal', headerShown: false }}
+            />
+            <Stack.Screen
+              name="surface-style"
+              options={{ title: 'Surface style', headerShown: false }}
+            />
+            <Stack.Screen
+              name="corner-touches"
+              options={{ title: 'Corner touches', headerShown: false }}
+            />
+            <Stack.Screen
+              name="detached-sheet"
+              options={{ title: 'Detached sheet', headerShown: false }}
+            />
+            <Stack.Screen
               name="lazy-mounted-modal"
               options={{ title: 'Lazy mounted modal', headerShown: false }}
             />
@@ -61,7 +77,7 @@ export default function RootLayout() {
             <Stack.Screen
               name="close-request"
               options={{
-                title: 'Android close requests',
+                title: 'Close requests',
                 headerShown: false,
               }}
             />
@@ -137,11 +153,15 @@ export default function RootLayout() {
               options={{ title: 'Invalid props', headerShown: false }}
             />
             <Stack.Screen
-              name="scrollable-negotiation"
+              name="scroll-coordination"
               options={{
-                title: 'Scrollable negotiation modes',
+                title: 'Scroll coordination modes',
                 headerShown: false,
               }}
+            />
+            <Stack.Screen
+              name="scroll-interaction"
+              options={{ title: 'Scroll interaction', headerShown: false }}
             />
             <Stack.Screen
               name="programmatic-detent-drag"
@@ -178,6 +198,10 @@ export default function RootLayout() {
                 title: 'Snap lifecycle callbacks',
                 headerShown: false,
               }}
+            />
+            <Stack.Screen
+              name="settle-duration"
+              options={{ title: 'Settle duration', headerShown: false }}
             />
             <Stack.Screen
               name="no-animate-in"

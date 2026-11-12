@@ -1,20 +1,39 @@
-import { useState, type ComponentType, type ReactNode } from 'react';
+import { useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import type { NativeSyntheticEvent, StyleProp, ViewStyle } from 'react-native';
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import {
+  I18nManager,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 
-import BottomSheetNativeView, {
-  type NativeProps,
-} from './BottomSheetNativeComponent';
-import BottomSheetSurfaceNativeComponent from './BottomSheetSurfaceNativeComponent';
+import {
+  BottomSheetContentWrapperView,
+  BottomSheetView,
+  BottomSheetSurfaceView,
+} from './BottomSheetHostViews';
+import type { NativeProps } from './BottomSheetNativeComponent';
 import { Portal } from './BottomSheetProvider';
 import {
+  CONTENT_HEIGHT_MARKER_NATIVE_ID,
   type Detent,
   isNormalizedDetentClosed,
-  normalizeDetent,
+  type ModalDetent,
+  normalizeDetents,
+  resolveSurfaceStyle,
+  type SurfaceStyle,
   validateIndex,
+  validateSettleDuration,
 } from './bottomSheetUtils';
-export type { Detent, DetentValue } from './bottomSheetUtils';
-export { programmatic } from './bottomSheetUtils';
+export type {
+  Detent,
+  DetentConfig,
+  DetentInsets,
+  DetentValue,
+  ModalDetent,
+  ModalDetentConfig,
+  SurfaceStyle,
+} from './bottomSheetUtils';
 
 /**
  * Payload of the {@link BottomSheetProps.onPositionChange} event, accessed as
@@ -26,42 +45,32 @@ export type PositionChangeEventData = Readonly<{
   /**
    * Fractional detent index in `0..(detents.length - 1)`: `0` at the shortest
    * detent, `1` at the next, and so on, interpolated as the sheet moves between
-   * them. Detents are required to be in ascending order by height. The
+   * them. Detents are required to be in ascending order by position. The
    * continuous counterpart of `onIndexChange`, so a backdrop or per-detent
    * animation can be driven without knowing the sheet's height.
    */
   index: number;
 }>;
 
-export type ScrollableNegotiationMode = 'none' | 'initial' | 'handoff';
+export type ScrollCoordinationMode = 'none' | 'initial' | 'handoff';
 
-export type ScrollableNegotiation =
-  | ScrollableNegotiationMode
+export type ScrollCoordination =
+  | ScrollCoordinationMode
   | Readonly<{
-      expand: ScrollableNegotiationMode;
-      collapse: ScrollableNegotiationMode;
+      expand: ScrollCoordinationMode;
+      collapse: ScrollCoordinationMode;
     }>;
 
-const SCROLLABLE_NEGOTIATION_LEVEL: Record<ScrollableNegotiationMode, number> =
-  {
-    none: 0,
-    initial: 1,
-    handoff: 2,
-  };
+const SCROLL_COORDINATION_LEVEL: Record<ScrollCoordinationMode, number> = {
+  none: 0,
+  initial: 1,
+  handoff: 2,
+};
 
-// Identifies the zero-height marker appended after the content so the native
-// hosts can measure the content height from its position. They look it up by
-// this nativeID rather than by sibling index, because Fabric mounts siblings
-// sorted by zIndex and a z-indexed child would otherwise take the marker's
-// place. Mirrored in `BottomSheetHostingView.swift` and
-// `BottomSheetHostView.kt`; keep the three in sync.
-const CONTENT_HEIGHT_MARKER_NATIVE_ID =
-  'swm-bottom-sheet-content-height-marker';
-
-const DEFAULT_SCROLLABLE_NEGOTIATION = {
+const DEFAULT_SCROLL_COORDINATION = {
   expand: 'handoff',
   collapse: 'initial',
-} as const satisfies Exclude<ScrollableNegotiation, string>;
+} as const satisfies Exclude<ScrollCoordination, string>;
 
 /**
  * Props for the inline bottom-sheet component.
@@ -81,23 +90,68 @@ export interface BottomSheetProps {
    * content would collapse and not show.
    */
   surface?: ReactNode;
+  /**
+   * The card shape of the sheet: corner radii, `borderCurve`, and shadows
+   * (`boxShadow`, `elevation`, and the `shadow*` props). The native host clips
+   * both `surface` and `children` to this shape, so content near a rounded
+   * corner is cut to it, and casts the shadows outside it. State the shape here
+   * rather than on the `surface` element, which only paints the background.
+   */
+  surfaceStyle?: StyleProp<SurfaceStyle>;
   /** Additional style applied to the native sheet host view. */
   style?: StyleProp<ViewStyle>;
   /**
-   * Snap points for the sheet, in ascending order by height. Defaults to
+   * Snap points for the sheet, in ascending order by position. Defaults to
    * `[0, 'content']` and must contain at least one value. Numbers must be finite
    * and non-negative. Percentage strings must be unsigned values from `0%`
    * through `100%` and resolve against the native usable height. Fixed detents
    * may be taller than the measured content or available height; native layout
    * caps them to the available geometry.
+   *
+   * Each detent is a bare value or an object with its options:
+   * `programmatic`, `insets`, and, on `ModalBottomSheet`, `scrimOpacity`. A
+   * detent without an option takes its default.
+   *
+   * A detent’s value is the height of the card, and percentages resolve against
+   * the available space: the host’s height minus `topInset` and that detent’s
+   * bottom inset. So `'100%'` fills the space between the gaps and never covers
+   * them. Detents ascend by the position of the card’s top: its height plus its
+   * bottom inset.
+   *
+   * A detent’s `insets` keep space around the card, so the sheet can float as
+   * a card. They are linearly interpolated as the sheet moves between detents;
+   * below the first open detent the card keeps its shape and slides down
+   * through the bottom inset. A closed detent ignores its insets.
+   *
+   * Insets never relayout the surface or content. They are laid out against
+   * the widest card, the detent with the tightest side insets, and scaled
+   * uniformly to fit narrower ones, so full-width content and an image surface
+   * always touch the card's edges. A `'content'` detent's card is its scaled
+   * height. `measure` and `measureInWindow` report the scaled position and
+   * size, `nativeOverlay` included, except on the web, where React Native
+   * Web's `measure` ignores transforms and only `measureInWindow` follows the
+   * card.
+   *
+   * Space in an inset isn't part of the sheet: touches there reach the scrim or
+   * whatever is behind it.
    */
   detents?: Detent[];
+  /**
+   * The minimum space between the card’s top and the host’s top, in points,
+   * at every detent. Defaults to the part of the status bar that overlaps the
+   * host, so the card stops below it; pass a lower value, or `0`, to go under
+   * the status bar.
+   */
+  topInset?: number;
   /**
    * Finite, zero-based integer in `0..(detents.length - 1)`. When shortening
    * `detents`, update `index` to remain in range in the same render.
    */
   index: number;
-  /** Whether the sheet should animate in on first layout. */
+  /**
+   * Whether a sheet that is open when it first appears, such as at app launch,
+   * animates in. Opening a closed sheet always animates.
+   */
   animateIn?: boolean;
   /**
    * Whether the sheet should animate when the active `'content'` detent changes
@@ -106,11 +160,6 @@ export interface BottomSheetProps {
    * @default true
    */
   animateContentHeight?: boolean;
-  /**
-   * Whether the sheet may extend under the status bar when using full-height
-   * detents. Defaults to `false`, so detents remain capped below the status bar.
-   */
-  extendUnderStatusBar?: boolean;
   /**
    * Called when a user-driven snap is initiated: the moment a drag commits to a
    * detent, before the animation settles. Does not fire for programmatic `index`
@@ -151,13 +200,27 @@ export interface BottomSheetProps {
    *
    * @default { expand: 'handoff', collapse: 'initial' }
    */
-  scrollableNegotiation?: ScrollableNegotiation;
+  scrollCoordination?: ScrollCoordination;
+  /**
+   * Seconds the spring that carries the sheet to a resolved detent takes to
+   * settle.
+   *
+   * The spring is critically damped, so this is also its stiffness: a longer
+   * duration is a softer settle. It starts at the release velocity and never
+   * passes the detent, so a release faster than the spring can stop in time
+   * finishes sooner.
+   *
+   * Must be a finite number greater than 0; leave it unset for the default.
+   *
+   * @default 0.45
+   */
+  settleDuration?: number;
 }
 
 type ModalOnlyBottomSheetProps = {
   /** Internal flag used by `ModalBottomSheet`. */
   modal?: boolean;
-  /** Android-only controlled close request callback used by `ModalBottomSheet`. */
+  /** Android and web controlled close request callback used by `ModalBottomSheet`. */
   onCloseRequest?: () => void;
   /**
    * Internal flag used by `ModalBottomSheet`. When set, the sheet is presented
@@ -167,38 +230,34 @@ type ModalOnlyBottomSheetProps = {
   nativeOverlay?: boolean;
   /** Scrim color used by `ModalBottomSheet`. */
   scrimColor?: string;
+  /** Scrim dismiss-control label used by `ModalBottomSheet`. */
+  scrimAccessibilityLabel?: string;
   /** Mount behavior used by `ModalBottomSheet`. */
   mount?: 'open' | 'once' | 'always';
-  /**
-   * Scrim opacities per detent, indexed to match `detents`. Each value in 0-1
-   * scales the scrim color's alpha at the detent of the same index, and the
-   * opacity is linearly interpolated as the sheet is dragged between detents.
-   * A shorter array than `detents` reuses its last value for any remaining
-   * detents.
-   *
-   * The default maps each detent to 0 when it is closed and 1 otherwise,
-   * so the scrim is transparent at any closed detent and fully opaque at every
-   * open one; e.g., `[0, 'content']` defaults to `[0, 1]`, and all-open detents
-   * default to a constant opaque scrim. Pass one value per detent, e.g.
-   * `[0, 0.5, 1]`, to keep the scrim deepening across every detent.
-   */
-  scrimOpacities?: number[];
 };
 
-export type BottomSheetInternalProps = BottomSheetProps &
-  ModalOnlyBottomSheetProps;
+export type BottomSheetInternalProps = Omit<BottomSheetProps, 'detents'> &
+  ModalOnlyBottomSheetProps & {
+    /** `ModalBottomSheet`’s detents can also set a scrim opacity. */
+    detents?: ModalDetent[];
+  };
+
+// Incremented whenever any sheet opens, so the most recently opened sheet
+// stacks on top and receives Back and Escape.
+let lastOpenOrder = 0;
 
 /** Native bottom sheet that renders inline within the current screen layout. */
 export const BottomSheet = (props: BottomSheetProps) => {
   const {
     children,
     surface,
+    surfaceStyle,
     style,
     detents = [0, 'content'],
+    topInset,
     index,
     animateIn = true,
     animateContentHeight = true,
-    extendUnderStatusBar = false,
     onIndexChange,
     onSettle,
     onPositionChange,
@@ -206,63 +265,85 @@ export const BottomSheet = (props: BottomSheetProps) => {
     wrapNativeView,
     modal = false,
     nativeOverlay = false,
-    scrollableNegotiation,
+    scrollCoordination,
     scrimColor,
-    scrimOpacities,
+    scrimAccessibilityLabel,
+    settleDuration,
     mount = 'open',
   } = props as BottomSheetInternalProps;
-  const resolvedScrollableNegotiation =
-    scrollableNegotiation ?? DEFAULT_SCROLLABLE_NEGOTIATION;
-  const resolvedExpandNegotiation =
-    typeof resolvedScrollableNegotiation === 'string'
-      ? resolvedScrollableNegotiation
-      : resolvedScrollableNegotiation.expand;
-  const resolvedCollapseNegotiation =
-    typeof resolvedScrollableNegotiation === 'string'
-      ? resolvedScrollableNegotiation
-      : resolvedScrollableNegotiation.collapse;
+  // A modal sheet stays in the tree only while open, unless `mount` keeps it.
+  const lazy = modal && mount !== 'always';
+  const coordination = scrollCoordination ?? DEFAULT_SCROLL_COORDINATION;
+  const resolvedExpandCoordination =
+    typeof coordination === 'string' ? coordination : coordination.expand;
+  const resolvedCollapseCoordination =
+    typeof coordination === 'string' ? coordination : coordination.collapse;
   const usesNativeOverlay = modal && nativeOverlay;
   // All real geometry — the sheet's frame, the content wrapper's bounds, and
-  // the detent cap (host height minus the overlapping status-bar inset, unless
-  // extendUnderStatusBar) — is measured natively from the window the sheet
-  // actually lives in and flows into the shadow tree through state (see
-  // BottomSheetHostView / BottomSheetHostingView). The window dimensions here
+  // the default top inset (the overlapping status-bar inset) — is measured
+  // natively from the window the sheet actually lives in and flows into the
+  // shadow tree through state (see BottomSheetHostView /
+  // BottomSheetHostingView). The window dimensions here
   // only size the native-overlay host for the first frame, before the overlay
   // window reports its measured geometry.
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   // Percentage detents stay as unitless ratios and are resolved against the
-  // current native cap whenever detents are refreshed. Point detents retain
-  // their requested height; native layout clamps both kinds to that cap.
+  // host's height whenever detents are refreshed. Point detents retain
+  // their requested height; native layout clamps both kinds to it.
   validateIndex(index, detents.length);
-  const normalizedDetents = detents.map(normalizeDetent);
+  validateSettleDuration(settleDuration);
+  const normalizedDetents = normalizeDetents(detents, topInset, modal);
 
   const selectedNormalizedDetent = normalizedDetents[index]!;
   const isSheetClosed = isNormalizedDetentClosed(selectedNormalizedDetent);
   const hasCloseRequestHandler = onCloseRequest != null;
-  // Whether a modal sheet is mounted. It turns on in the same render that
-  // `index` opens the sheet, so `'content'` detents measure the children before
-  // it animates in, and (in `'open'` mode) off once it settles closed.
-  const [shown, setShown] = useState(!isSheetClosed);
-  if (!isSheetClosed && !shown) {
-    setShown(true);
+  // Whether the sheet is open or still closing. Set during render so a lazy
+  // sheet mounts in the same commit as the open index.
+  const [isSheetActive, setIsSheetActive] = useState(!isSheetClosed);
+  // `animateIn` only covers the initial presentation, but a lazy sheet's native
+  // view also runs its first layout on every later open, which must animate.
+  const [hasOpenedFromClosed, setHasOpenedFromClosed] = useState(false);
+  if (!isSheetClosed && !isSheetActive) {
+    setIsSheetActive(true);
+    setHasOpenedFromClosed(true);
   }
-  // Default the scrim opacity per detent: transparent at any closed detent,
-  // fully opaque at every open one.
-  const resolvedScrimOpacities =
-    scrimOpacities ??
-    normalizedDetents.map((detent) =>
-      isNormalizedDetentClosed(detent) ? 0 : 1
-    );
+  // The surface and content are laid out against the widest card, and the
+  // native host scales them down to narrower ones. Stated as start/end because
+  // insets are physical, while left/right may swap under RTL.
+  const widestDetent = normalizedDetents.find((detent) => detent.widestCard);
+  const contentLeft = widestDetent?.insetLeft ?? 0;
+  const contentRight = widestDetent?.insetRight ?? 0;
+  // When the sheet last opened, relative to other sheets: 0 until it first
+  // opens. This includes reopening while it is still closing.
+  const [wasSheetClosed, setWasSheetClosed] = useState(isSheetClosed);
+  const [openOrder, setOpenOrder] = useState(() =>
+    isSheetClosed ? 0 : ++lastOpenOrder
+  );
+  if (isSheetClosed !== wasSheetClosed) {
+    setWasSheetClosed(isSheetClosed);
+    if (!isSheetClosed) {
+      setOpenOrder(++lastOpenOrder);
+    }
+  }
+  const { cornerRadii, cornerCurve, shadows, elevation, shadowColor } = useMemo(
+    () => resolveSurfaceStyle(surfaceStyle, I18nManager.isRTL),
+    [surfaceStyle]
+  );
   const handleIndexChange = (event: { nativeEvent: { index: number } }) => {
     onIndexChange?.(event.nativeEvent.index);
   };
   const handleSettle = (event: { nativeEvent: { index: number } }) => {
+    // Don't compare against `index`: the settle can arrive in the same batch as
+    // the `onIndexChange` that closes the sheet, before `index` catches up. If
+    // a newer open index superseded this settle, the render-time check above
+    // reactivates the sheet before commit, so it never unmounts.
+    const settledDetent = normalizedDetents[event.nativeEvent.index];
     if (
       mount === 'open' &&
-      isSheetClosed &&
-      event.nativeEvent.index === index
+      settledDetent != null &&
+      isNormalizedDetentClosed(settledDetent)
     ) {
-      setShown(false);
+      setIsSheetActive(false);
     }
     onSettle?.(event.nativeEvent.index);
   };
@@ -276,13 +357,12 @@ export const BottomSheet = (props: BottomSheetProps) => {
   // the native sheet.
   const [NativeView] = useState(
     () =>
-      (wrapNativeView?.(BottomSheetNativeView) ??
-        BottomSheetNativeView) as ComponentType<
+      (wrapNativeView?.(BottomSheetView) ?? BottomSheetView) as ComponentType<
         NativeProps & { children?: ReactNode }
       >
   );
 
-  if (modal && mount !== 'always' && !shown) {
+  if (lazy && !isSheetActive) {
     return null;
   }
 
@@ -325,45 +405,67 @@ export const BottomSheet = (props: BottomSheetProps) => {
             style,
           ]}
           detents={normalizedDetents}
-          extendUnderStatusBar={extendUnderStatusBar}
           index={index}
-          animateIn={animateIn}
+          animateIn={animateIn || (lazy && hasOpenedFromClosed)}
           animateContentHeight={animateContentHeight}
           modal={modal}
           nativeOverlay={usesNativeOverlay}
+          openOrder={openOrder}
           hasCloseRequestHandler={hasCloseRequestHandler}
-          scrollableExpandNegotiation={
-            SCROLLABLE_NEGOTIATION_LEVEL[resolvedExpandNegotiation]
+          scrollExpandCoordination={
+            SCROLL_COORDINATION_LEVEL[resolvedExpandCoordination]
           }
-          scrollableCollapseNegotiation={
-            SCROLLABLE_NEGOTIATION_LEVEL[resolvedCollapseNegotiation]
+          scrollCollapseCoordination={
+            SCROLL_COORDINATION_LEVEL[resolvedCollapseCoordination]
           }
+          // 0 tells native to use its default.
+          settleDuration={settleDuration ?? 0}
           scrimColor={scrimColor}
-          scrimOpacities={resolvedScrimOpacities}
+          // An empty label would leave the button unlabeled, so it falls back too.
+          scrimAccessibilityLabel={scrimAccessibilityLabel || 'Dismiss'}
+          surfaceCornerRadii={cornerRadii}
+          surfaceCornerCurve={cornerCurve}
+          surfaceShadows={shadows}
+          surfaceElevation={elevation}
+          surfaceShadowColor={shadowColor}
           onIndexChange={handleIndexChange}
           onSettle={handleSettle}
           onPositionChange={onPositionChange}
           onCloseRequest={onCloseRequest}
         >
           {surface != null && (
-            <BottomSheetSurfaceNativeComponent
+            <BottomSheetSurfaceView
               collapsable={false}
               pointerEvents="box-none"
-              style={StyleSheet.absoluteFill}
+              style={[
+                styles.surface,
+                {
+                  start: I18nManager.isRTL ? contentRight : contentLeft,
+                  end: I18nManager.isRTL ? contentLeft : contentRight,
+                },
+              ]}
             >
               {surface}
-            </BottomSheetSurfaceNativeComponent>
+            </BottomSheetSurfaceView>
           )}
-          <View
+          <BottomSheetContentWrapperView
             collapsable={false}
             // The wrapper fills the sheet's content region exactly: the native
             // side reports the region's inset (the gap between the sheet's
-            // height and the tallest detent, clamped to the detent cap) into
+            // height and the tallest detent, clamped to the space its insets leave) into
             // the shadow tree, where it is applied as Yoga bottom padding on
-            // the sheet node — so this in-flow flex: 1 child resolves to the
-            // region the sheet can actually show, on every device and in
-            // every mode.
-            style={styles.contentWrapper}
+            // the sheet node, or as this wrapper's overflow when a narrow card's
+            // region outgrows the sheet — so this in-flow flex: 1 child resolves
+            // to the region the sheet can actually show, on every device and in
+            // every mode. Its own component so `measure` includes the card's
+            // scale, which its shadow node reports.
+            style={[
+              styles.contentWrapper,
+              {
+                marginStart: I18nManager.isRTL ? contentRight : contentLeft,
+                marginEnd: I18nManager.isRTL ? contentLeft : contentRight,
+              },
+            ]}
           >
             {children}
             <View
@@ -371,7 +473,7 @@ export const BottomSheet = (props: BottomSheetProps) => {
               nativeID={CONTENT_HEIGHT_MARKER_NATIVE_ID}
               pointerEvents="none"
             />
-          </View>
+          </BottomSheetContentWrapperView>
         </NativeView>
       </View>
     </View>
@@ -384,12 +486,13 @@ export const BottomSheet = (props: BottomSheetProps) => {
     if (usesNativeOverlay) {
       return sheet;
     }
-    return <Portal>{sheet}</Portal>;
+    return <Portal order={openOrder}>{sheet}</Portal>;
   }
 
   return sheet;
 };
 
 const styles = StyleSheet.create({
+  surface: { position: 'absolute', top: 0, bottom: 0 },
   contentWrapper: { flex: 1 },
 });
