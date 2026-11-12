@@ -1,11 +1,11 @@
 {
   "name": "@wekor/react-native-bottom-sheet-example",
-  "version": "0.1.3",
   "main": "index.js",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "build:ios": "xcodebuild ONLY_ACTIVE_ARCH=YES -workspace ios/ReactNativeBottomSheetExample.xcworkspace -scheme ReactNativeBottomSheetExample -configuration Debug -sdk iphonesimulator -derivedDataPath ios/build -quiet"
   },
   "dependencies": {
     "@expo/metro-runtime": "~56.0.13",

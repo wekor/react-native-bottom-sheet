@@ -1,0 +1,30 @@
+name: PR title
+
+# Squash merges use the PR title as the commit message on main, and
+# release-please reads those messages to pick the next version and write the
+# changelog. Lint the title with the same commitlint config as local commits.
+# Kept out of ci.yml so editing a title doesn't restart the native builds.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+    # Same exclusion as ci.yml: release-please's own PR.
+    paths-ignore:
+      - CHANGELOG.md
+      - .release-please-manifest.json
+      - package.json
+      - example/app.json
+
+permissions:
+  contents: read
+
+jobs:
+  commitlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+      - name: Lint PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: echo "$TITLE" | bun commitlint
