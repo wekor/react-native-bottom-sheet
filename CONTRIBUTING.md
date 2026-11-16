@@ -17,7 +17,7 @@ Run the example with `bun run --cwd example ios` or
 JVM and instrumentation tests.
 
 The native code under `ios/`, `android/` and `common/` tracks
-[software-mansion-labs/react-native-bottom-sheet](https://github.com/software-mansion-labs/react-native-bottom-sheet).
+[software-mansion/react-native-bottom-sheet](https://github.com/software-mansion/react-native-bottom-sheet).
 Keep it identical to upstream apart from the documented fork changes, so syncs
 stay cheap.
 

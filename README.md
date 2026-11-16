@@ -15,5 +15,5 @@ Learn more in
 ## Acknowledgements
 
 This project is a fork of
-[software-mansion-labs/react-native-bottom-sheet](https://github.com/software-mansion-labs/react-native-bottom-sheet),
+[software-mansion/react-native-bottom-sheet](https://github.com/software-mansion/react-native-bottom-sheet),
 originally created by Software Mansion and distributed under the MIT License.

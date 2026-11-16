@@ -11,6 +11,9 @@ internal interface SheetHost {
 
   fun notifyCloseRequestStateChanged()
 
+  /** Performs a close request: reports it to `onCloseRequest`, or snaps the sheet closed. */
+  fun performCloseRequest(): Boolean
+
   fun updateInteractionState()
 
   fun layoutSheetContainer(viewWidth: Int, viewHeight: Int)
@@ -21,6 +24,7 @@ internal interface SheetHost {
 /** The state several parts of the sheet read, and the geometry derived directly from it. */
 internal class SheetState(val hostView: ViewGroup, val sheetContainer: BottomSheetCardContainer) {
   val density = hostView.context.resources.displayMetrics.density
+  val scrollIndicators = ScrollIndicators(this)
   val width: Int
     get() = hostView.width
 
@@ -74,6 +78,10 @@ internal class SheetState(val hostView: ViewGroup, val sheetContainer: BottomShe
 
   val scrimDismissIndex: Int?
     get() = closedIndex?.takeIf { !detentSpecs[it].programmatic }
+
+  // Whether JS supplied `onCloseRequest`. A close request then goes to the handler instead of
+  // snapping the sheet to its closed detent.
+  var hasCloseRequestHandler = false
 
   val firstOpenDetentPosition: Float
     get() = detentSpecs.firstOrNull { it.position > 0f }?.position ?: 0f

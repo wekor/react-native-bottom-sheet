@@ -330,7 +330,7 @@ export const DetachedSheetScreen = () => {
   const [isUnmounted, setIsUnmounted] = useState(false);
   const [scenarioIndex, setScenarioIndex] = useState(0);
   const [isModal, setIsModal] = useState(true);
-  const [nativeOverlay, setNativeOverlay] = useState(false);
+  const [windowOverlay, setWindowOverlay] = useState(false);
   const [isUnderStatusBar, setIsUnderStatusBar] = useState(false);
   const [hasShadow, setHasShadow] = useState(true);
   const [behindPresses, setBehindPresses] = useState(0);
@@ -440,7 +440,7 @@ export const DetachedSheetScreen = () => {
             <ModalBottomSheet
               {...sheetProps}
               scrimColor={MODAL_SCRIM_COLOR}
-              nativeOverlay={nativeOverlay}
+              windowOverlay={windowOverlay}
             />
           ) : (
             <BottomSheet {...sheetProps} />
@@ -469,9 +469,9 @@ export const DetachedSheetScreen = () => {
       <View style={styles.toggles}>
         <Toggle label="Modal" value={isModal} onValueChange={setIsModal} />
         <Toggle
-          label="Native overlay"
-          value={nativeOverlay}
-          onValueChange={setNativeOverlay}
+          label="Window overlay"
+          value={windowOverlay}
+          onValueChange={setWindowOverlay}
         />
         <Toggle
           label="Under status bar"
