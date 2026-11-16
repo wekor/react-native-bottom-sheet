@@ -1,5 +1,6 @@
 #import "BottomSheetComponentView.h"
 #import "BottomSheetContentView.h"
+#import "BottomSheetPortalHostComponentView.h"
 #import "BottomSheetSurfaceComponentView.h"
 #import "../common/cpp/react/renderer/components/ReactNativeBottomSheetSpec/BottomSheetStateHelper.h"
 #import "../common/cpp/react/renderer/components/ReactNativeBottomSheetSpec/ComponentDescriptors.h"
@@ -15,7 +16,7 @@
 
 using namespace facebook::react;
 
-/// Full-window container hosting the sheet in native-overlay mode. It is added
+/// Full-window container hosting the sheet in window-overlay mode. It is added
 /// directly to the host `UIWindow` (above any modal presented in that window)
 /// and forwards hit-testing to its single subview—the sheet—so touches outside
 /// the sheet and its scrim fall through to the content underneath.
@@ -59,10 +60,12 @@ using namespace facebook::react;
   float _lastContentOffsetY;
   float _lastContentScale;
   BOOL _needsIndexSyncAfterRecycle;
-  BOOL _nativeOverlay;
+  BOOL _windowOverlay;
   NSInteger _openOrder;
   BottomSheetOverlayContainerView *_overlayContainer;
   RCTSurfaceTouchHandler *_overlayTouchHandler;
+  // The portal host this sheet is presented in, outside window-overlay mode.
+  __weak BottomSheetPortalHostComponentView *_portalHost;
   CGSize _lastGeometryFrameSize;
   CGFloat _lastGeometryInset;
   CGFloat _lastGeometrySurfaceOverflow;
@@ -79,7 +82,7 @@ using namespace facebook::react;
     const auto &defaultProps = BottomSheetViewShadowNode::defaultSharedProps();
     _props = defaultProps;
     _needsIndexSyncAfterRecycle = NO;
-    _nativeOverlay = NO;
+    _windowOverlay = NO;
     _lastContentScale = 1;
 
     _sheetView = [[BottomSheetContentView alloc] initWithFrame:CGRectZero];
@@ -140,19 +143,20 @@ using namespace facebook::react;
     _sheetView.modal = newViewProps.modal;
   }
 
-  // Diff against the `_nativeOverlay` ivar, not `oldViewProps` (which reads the
+  // Diff against the `_windowOverlay` ivar, not `oldViewProps` (which reads the
   // retained `_props`). On a recycled instance `_props` still holds the previous
   // sheet's props, so an `oldProps`-based diff misses true→true and never
   // re-hoists—leaving `prepareForRecycle`'s reset to inline presentation in
   // place, so the sheet renders inline with no overlay or scrim. The ivar is the
   // genuine current presentation state, reset in both `init` and
   // `prepareForRecycle`, so it diffs correctly across recycling.
-  if (newViewProps.nativeOverlay != _nativeOverlay) {
-    _nativeOverlay = newViewProps.nativeOverlay;
+  if (newViewProps.windowOverlay != _windowOverlay) {
+    _windowOverlay = newViewProps.windowOverlay;
     [self updateOverlayPresentation];
+    [self updatePortalHost];
   }
 
-  // Diffed against the ivar for the same reason. A native-overlay sheet that
+  // Diffed against the ivar for the same reason. A window-overlay sheet that
   // opens moves to the front of its window.
   if (newViewProps.openOrder != _openOrder) {
     BOOL didOpen = newViewProps.openOrder > _openOrder;
@@ -174,6 +178,12 @@ using namespace facebook::react;
 
   if (newViewProps.settleDuration != oldViewProps.settleDuration) {
     _sheetView.settleDuration = newViewProps.settleDuration;
+  }
+
+  // Compared against native state rather than the old props, so the hosting
+  // view is right whatever a recycled view's previous props were.
+  if (newViewProps.hasCloseRequestHandler != _sheetView.hasCloseRequestHandler) {
+    _sheetView.hasCloseRequestHandler = newViewProps.hasCloseRequestHandler;
   }
 
   if (newViewProps.scrimColor != oldViewProps.scrimColor) {
@@ -237,9 +247,10 @@ using namespace facebook::react;
 - (void)didMoveToWindow
 {
   [super didMoveToWindow];
+  [self updatePortalHost];
   // Attach once a window is available, detach when leaving it. The window is the
   // anchor for the overlay container, so its lifecycle gates presentation.
-  if (_nativeOverlay || _overlayContainer != nil) {
+  if (_windowOverlay || _overlayContainer != nil) {
     if (self.window == nil) {
       // Fabric reparents this view mid-commit (remove → update → insert) when
       // ancestor view flattening changes — e.g. a pointerEvents flip on open —
@@ -261,14 +272,14 @@ using namespace facebook::react;
   }
 }
 
-/// Reconciles where the sheet view is parented with the current `nativeOverlay`
+/// Reconciles where the sheet view is parented with the current `windowOverlay`
 /// flag and window availability: hoisted into a full-window container attached to
 /// the host window when on, restored under this view when off.
 - (void)updateOverlayPresentation
 {
   UIWindow *window = self.window;
 
-  if (!_nativeOverlay) {
+  if (!_windowOverlay) {
     if (_overlayContainer != nil) {
       [self restoreInlinePresentation];
     }
@@ -303,7 +314,7 @@ using namespace facebook::react;
       [self attachOverlayTouchHandler];
     }
     [self pushNativeGeometry];
-    [self updateOverlayAccessibilityState];
+    [self updateAccessibilityModality];
   } else {
     if (_overlayContainer != nil) {
       [self restoreInlinePresentation];
@@ -336,9 +347,37 @@ using namespace facebook::react;
   }
 }
 
-- (void)updateOverlayAccessibilityState
+/// Keeps screen readers out of the screen behind an open modal sheet. In
+/// window-overlay mode the overlay container is a window subview, so marking it
+/// modal hides the rest of the window; otherwise the portal host does the same
+/// for the screen around it.
+- (void)updateAccessibilityModality
 {
-  _overlayContainer.accessibilityViewIsModal = _nativeOverlay && _sheetView.isModalAccessibilityActive;
+  BOOL isModal = _sheetView.isModalAccessibilityActive;
+  _overlayContainer.accessibilityViewIsModal = _windowOverlay && isModal;
+  // A presented portal sheet still covers the screen at a transparent detent.
+  [_portalHost setSheet:self isModal:!_windowOverlay && _sheetView.modal && _sheetView.isPresented];
+}
+
+/// Finds the portal host this sheet is mounted in. Fabric can move the view
+/// between parents, so this follows every window change and leaves the previous
+/// host first.
+- (void)updatePortalHost
+{
+  BottomSheetPortalHostComponentView *host = nil;
+  if (!_windowOverlay && self.window != nil) {
+    for (UIView *view = self.superview; view != nil; view = view.superview) {
+      if ([view isKindOfClass:BottomSheetPortalHostComponentView.class]) {
+        host = (BottomSheetPortalHostComponentView *)view;
+        break;
+      }
+    }
+  }
+  if (host != _portalHost) {
+    [_portalHost setSheet:self isModal:NO];
+    _portalHost = host;
+  }
+  [self updateAccessibilityModality];
 }
 
 /// Pushes the current natively measured geometry into the shadow tree: the
@@ -452,8 +491,17 @@ using namespace facebook::react;
   }
 }
 
+- (void)bottomSheetViewDidRequestClose:(BottomSheetContentView *)view
+{
+  if (_eventEmitter) {
+    auto emitter = std::static_pointer_cast<const BottomSheetViewEventEmitter>(_eventEmitter);
+    emitter->onCloseRequest({});
+  }
+}
+
 - (void)bottomSheetView:(BottomSheetContentView *)view didSettle:(NSInteger)index
 {
+  [self updateAccessibilityModality];
   if (_eventEmitter) {
     auto emitter = std::static_pointer_cast<const BottomSheetViewEventEmitter>(_eventEmitter);
     emitter->onSettle({.index = static_cast<int>(index)});
@@ -471,12 +519,12 @@ using namespace facebook::react;
   }
 
   [self pushContentGeometry];
-  [self updateOverlayAccessibilityState];
+  [self updateAccessibilityModality];
 }
 
 /// The shadow node applies these as a content-origin offset and scale so descendant
 /// coordinates (measure, hit-testing) follow the sheet content to where it is
-/// physically drawn within the host. In native-overlay mode the content is
+/// physically drawn within the host. In window-overlay mode the content is
 /// re-rooted to a window-level full-screen overlay; the shadow node is marked as
 /// a layout root in that mode (see BottomSheetViewComponentDescriptor), so the
 /// outer-tree origin is dropped structurally and only this in-host displacement
@@ -506,14 +554,21 @@ using namespace facebook::react;
   [self pushNativeGeometry];
 }
 
+- (void)bottomSheetViewDidUpdateScrim:(BottomSheetContentView *)view
+{
+  [self updateAccessibilityModality];
+}
+
 - (void)prepareForRecycle
 {
   [super prepareForRecycle];
   // Restore inline parenting after the base class resets Fabric view state so a
   // reused instance starts from the default presentation.
-  _nativeOverlay = NO;
+  _windowOverlay = NO;
   _openOrder = 0;
   [self restoreInlinePresentation];
+  [_portalHost setSheet:self isModal:NO];
+  _portalHost = nil;
   _needsIndexSyncAfterRecycle = YES;
   [_sheetView resetSheetState];
   _sheetState.reset();

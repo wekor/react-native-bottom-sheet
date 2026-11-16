@@ -11,6 +11,14 @@ import UIKit
   /// layer can push the content wrapper's target size (and, in overlay mode,
   /// the sheet frame) into the shadow tree.
   func bottomSheetHostingViewDidLayout(_ view: BottomSheetHostingView)
+  /// Fired after the scrim and sheet visibility are re-evaluated without the
+  /// sheet moving (e.g., a `scrimOpacity` or `modal` change), so the component
+  /// layer can follow `isPresented` and `isModalAccessibilityActive`. Movement
+  /// reports through `didChangePosition` instead.
+  func bottomSheetHostingViewDidUpdateScrim(_ view: BottomSheetHostingView)
+  /// Fired when a scrim tap, the scrim's dismiss button, or VoiceOver's escape
+  /// gesture asks a sheet with an `onCloseRequest` handler to close.
+  func bottomSheetHostingViewDidRequestClose(_ view: BottomSheetHostingView)
 }
 
 /// The scrim control, exposed to VoiceOver as a dismiss button while a
@@ -92,6 +100,15 @@ public final class BottomSheetHostingView: UIView {
   /// resolved to. `0` (the default) uses `defaultSettleDuration`.
   public var settleDuration: CFTimeInterval = 0
 
+  /// Whether JS supplied `onCloseRequest`. A close request then goes to the
+  /// handler instead of snapping the sheet to its closed detent.
+  public var hasCloseRequestHandler = false {
+    didSet {
+      guard hasCloseRequestHandler != oldValue else { return }
+      updateInteractionState()
+    }
+  }
+
   var rawDetentSpecs: [RawDetentSpec] = []
   /// Whether any detent keeps a gap at the card's sides or bottom, so the card
   /// is narrower or shorter than the surface and has to clip it. A top inset
@@ -135,6 +152,9 @@ public final class BottomSheetHostingView: UIView {
   var panStartingIndex: Int?
   var initialScrollViewStates: [ActiveScrollViewState] = []
   let scrollIndicatorFits = NSMapTable<UIScrollView, ScrollIndicatorFit>.weakToStrongObjects()
+  /// The scroll views' indicator-drag recognizers the sheet listens to.
+  let observedIndicatorDrags = NSHashTable<UIGestureRecognizer>.weakObjects()
+  var indicatorDrag: IndicatorDragState?
   /// Whether every scrollable under the touch was at its visual start as the
   /// touch landed: the `initial` owner selection at the largest detent.
   var initialScrollableChainAtStart = true
@@ -211,7 +231,7 @@ public final class BottomSheetHostingView: UIView {
     scrimView.accessibilityTraits = .button
     scrimView.accessibilityLabel = "Dismiss"
     scrimView.accessibilityRegion = { [weak self] in self?.scrimDismissRegion ?? .zero }
-    scrimView.onAccessibilityActivate = { [weak self] in self?.attemptScrimDismissal() ?? false }
+    scrimView.onAccessibilityActivate = { [weak self] in self?.requestClose() ?? false }
     addSubview(scrimView)
 
     sheetContainer.backgroundColor = .clear
@@ -607,6 +627,8 @@ public final class BottomSheetHostingView: UIView {
     activeDragDetentSpecs = nil
     initialScrollViewStates = []
     initialScrollableChainAtStart = true
+    detachIndicatorDrags()
+    releaseScrollIndicatorFits()
     finishScrollViewCoordination()
     setContentInteractionEnabled(true)
     stopObservingContentHeightMarker()
@@ -675,6 +697,9 @@ public final class BottomSheetHostingView: UIView {
   }
 
   deinit {
+    for recognizer in observedIndicatorDrags.allObjects {
+      recognizer.removeTarget(self, action: nil)
+    }
     stopObservingContentHeightMarker()
     displayLink?.invalidate()
     removeSettleAnimations()
