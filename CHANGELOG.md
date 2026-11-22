@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/wekor/react-native-bottom-sheet/compare/v1.0.0-next.1...v1.0.0) (2026-11-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* sync with upstream 1.0.0
+
+### Features
+
+* sync with upstream 1.0.0 ([3ffe8d0](https://github.com/wekor/react-native-bottom-sheet/commit/3ffe8d06e42645b6fe08cfecb0a27bb080293544))
+
 ## [1.0.0-next.1](https://github.com/wekor/react-native-bottom-sheet/compare/v0.2.0...v1.0.0-next.1) (2026-11-16)
 
 
