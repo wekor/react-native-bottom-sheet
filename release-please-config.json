@@ -4,7 +4,8 @@
     ".": {
       "release-type": "node",
       "package-name": "@wekor/react-native-bottom-sheet",
-      "release-as": "1.0.0",
+      "release-as": "1.1.0-next.1",
+      "prerelease": true,
       "include-component-in-tag": false,
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
